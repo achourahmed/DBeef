@@ -1,0 +1,18 @@
+local-documents/
+local-manuals/
+.superpowers/
+
+# Python
+.venv/
+uv.lock
+.python-version
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Tauri
+node_modules/
+dist/
+target/
+
+.DS_Store
