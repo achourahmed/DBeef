@@ -54,3 +54,16 @@ def test_cors_preflight(project):
     r = c.options("/api/projects", headers={"Origin": "tauri://localhost",
                   "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "X-DBeef-Token"})
     assert r.headers["access-control-allow-origin"] == "tauri://localhost"
+
+
+def test_error_contract_everywhere(client):
+    r = client.get("/api/nope", headers=H)
+    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+    r = client.get("/api/projects", headers={"X-DBeef-Token": "é".encode("latin-1")})
+    assert r.status_code == 401 and r.json()["error"]["code"] == "unauthorized"
+
+
+def test_openapi_documents_error_body(client):
+    op = client.get("/openapi.json").json()["paths"]["/api/projects/{p}/stores/{s}/query"]["post"]
+    assert "422" not in op["responses"]
+    assert "ErrorBody" in op["responses"]["403"]["content"]["application/json"]["schema"]["$ref"]

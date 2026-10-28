@@ -124,7 +124,7 @@ Every response is JSON. **The engine owns this contract.** FastAPI publishes it 
 - The engine binds to `127.0.0.1` only, picks a free port, and generates a random token. Its **first stdout line** is the JSON `{"port": 51234, "token": "..."}`. Tauri reads that line and hands both values to the UI.
 - Every request must carry an `X-DBeef-Token` header matching the token. A dev flag `--dev-token <value>` sets a known token for the dev page and the tests.
 - CORS allows only the Tauri webview origins (`tauri://localhost`, `http://tauri.localhost`), plus the dev server origin given by `--allow-origin`.
-- Error body for every 4xx/5xx: `{"error": {"code": "write_blocked" | "store_unavailable" | "not_found" | "bad_query" | "timeout", "message": "..."}}`.
+- Error body for every 4xx/5xx: `{"error": {"code": "write_blocked" | "store_unavailable" | "not_found" | "bad_query" | "timeout" | "unauthorized" | "internal", "message": "..."}}`. `/openapi.json` declares this body as `ErrorBody`. Validation errors return 400 `bad_query`, not 422.
 
 | Method + path | Purpose |
 |---|---|
