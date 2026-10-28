@@ -19,3 +19,8 @@ target/
 
 # Generated sample data
 engine/examples/*.db
+
+# Local env files (app/.env.example is the template)
+.env
+.env.local
+.env.*.local
