@@ -9,7 +9,7 @@ Status: phase 1 (the engine). The design is in [docs/superpowers/specs/2026-10-2
 | Path | What it holds |
 |---|---|
 | `engine/` | Python engine: adapters (SQLite, Neo4j, Redis), config loading, the HTTP API, and a throwaway dev page |
-| `app/` | Tauri + React desktop UI (not built yet) |
+| `app/` | React + shadcn/ui UI, run in the browser for now (the Tauri shell comes later) |
 | `docs/` | Design spec and implementation plans |
 
 ## Run the engine
@@ -26,6 +26,20 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 Then open <http://127.0.0.1:8765/?token=dev>.
 
 On startup the engine prints `{"port": ..., "token": ...}` as its first line. Every `/api/*` request must send that token in the `X-DBeef-Token` header. Without `--dev-token`, the token is random. The full API contract is served at `/openapi.json`.
+
+## Run the UI
+
+Requires Node 20 or newer. Start the engine first, allowing the dev server's origin:
+
+```bash
+cd engine && .venv/bin/python -m dbeef --config examples/dbeef.example.yaml --port 8765 --dev-token dev --allow-origin http://localhost:5173
+```
+
+```bash
+cd app && npm install && npm run dev -- --port 5173 --strictPort
+```
+
+Then open <http://localhost:5173>. The UI reads the engine URL and token from `?engine=` and `?token=`, then from `app/.env` (see `app/.env.example`), then defaults to `http://127.0.0.1:8765` and `dev`. After an API change, regenerate the types with `npm run gen:api` while the engine runs.
 
 ## Tests
 
