@@ -69,3 +69,36 @@ def test_missing_file_is_unavailable_and_not_created(tmp_path):
 def test_bad_sql(sample_db):
     with pytest.raises(BadQuery):
         SqliteAdapter(sample_db).query("SELEC 1")
+
+
+# Final review fixes
+
+def test_uri_special_chars_in_path(tmp_path):
+    with pytest.raises(StoreUnavailable):
+        SqliteAdapter(tmp_path / "a#b.db").ping()
+    assert list(tmp_path.iterdir()) == []
+    odd = tmp_path / "q?x%41.db"
+    conn = sqlite3.connect(odd)
+    conn.execute("CREATE TABLE t(x)")
+    conn.commit()
+    conn.close()
+    assert [c.name for c in SqliteAdapter(odd).list_collections()] == ["t"]
+
+
+def test_broken_view_does_not_break_store(sample_db):
+    conn = sqlite3.connect(sample_db)
+    conn.executescript("CREATE TABLE g(x); CREATE VIEW v AS SELECT * FROM g; DROP TABLE g;")
+    conn.close()
+    a = SqliteAdapter(sample_db)
+    counts = {c.name: c.count for c in a.list_collections()}
+    assert counts["v"] is None and counts["runs"] == 3
+    assert len(a.sample("runs").rows) == 3
+
+
+def test_sample_and_describe_do_not_count(sample_db):
+    a = SqliteAdapter(sample_db)
+    seen = []
+    a._connect().set_trace_callback(seen.append)
+    a.sample("runs")
+    a.describe("run_facts")
+    assert not any("COUNT(" in s.upper() for s in seen)

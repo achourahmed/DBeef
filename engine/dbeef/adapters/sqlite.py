@@ -38,8 +38,10 @@ class SqliteAdapter(Adapter):
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
             try:
-                # mode=ro never creates a missing file.
-                conn = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True, check_same_thread=False)
+                # mode=ro never creates a missing file; as_uri() percent-encodes '#', '?' and '%'
+                # so they can't end the path early and silently drop mode=ro.
+                conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True,
+                                       check_same_thread=False)
                 conn.execute("PRAGMA query_only=ON")
             except sqlite3.Error as e:
                 raise StoreUnavailable(f"cannot open {self.path}: {e}") from e
@@ -70,17 +72,31 @@ class SqliteAdapter(Adapter):
     def ping(self) -> None:
         self._run("SELECT 1")
 
-    def list_collections(self) -> list[Collection]:
-        objs = self._run("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') "
+    def _objects(self) -> list[list]:
+        return self._run("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') "
                          "AND name NOT LIKE 'sqlite_%' ORDER BY name", limit=10_000).rows
-        return [Collection(name=name, kind=kind,
-                           count=self._run(f"SELECT COUNT(*) FROM {_quote(name)}").rows[0][0])
-                for name, kind in objs]
+
+    def _count(self, name: str, kind: str) -> int | None:
+        # MAX(rowid) is O(log n) where COUNT(*) scans: fine for an estimate on multi-GB files.
+        # Views get no count, since counting one runs its whole query.
+        if kind == "view":
+            return None
+        try:
+            return self._run(f"SELECT COALESCE(MAX(rowid), 0) FROM {_quote(name)}").rows[0][0]
+        except BadQuery:  # WITHOUT ROWID tables
+            try:
+                return self._run(f"SELECT COUNT(*) FROM {_quote(name)}").rows[0][0]
+            except (BadQuery, QueryTimeout):
+                return None
+
+    def list_collections(self) -> list[Collection]:
+        return [Collection(name=name, kind=kind, count=self._count(name, kind), count_is_estimate=kind == "table")
+                for name, kind in self._objects()]
 
     def _known(self, name: str) -> Collection:
-        for c in self.list_collections():
-            if c.name == name:
-                return c
+        for obj_name, kind in self._objects():
+            if obj_name == name:
+                return Collection(name=name, kind=kind, count=None)
         raise NotFound(f"no table or view {name!r}")
 
     def describe(self, name: str) -> Description:

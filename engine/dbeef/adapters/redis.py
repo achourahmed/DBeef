@@ -3,6 +3,7 @@
 import re
 import shlex
 from collections import Counter
+from contextlib import contextmanager
 
 import redis
 
@@ -46,9 +47,10 @@ class RedisAdapter(Adapter):
         self._r = redis.Redis.from_url(url, socket_timeout=QUERY_TIMEOUT_S,
                                        socket_connect_timeout=QUERY_TIMEOUT_S, decode_responses=False)
 
-    def _call(self, fn, *args, **kwargs):
+    @contextmanager
+    def _errors(self):
         try:
-            return fn(*args, **kwargs)
+            yield
         except redis.ConnectionError as e:
             raise StoreUnavailable(f"redis unreachable: {e}") from e
         except redis.TimeoutError as e:
@@ -56,12 +58,17 @@ class RedisAdapter(Adapter):
         except redis.RedisError as e:
             raise BadQuery(str(e)) from e
 
+    def _call(self, fn, *args, **kwargs):
+        with self._errors():
+            return fn(*args, **kwargs)
+
     def _scan(self, match: str | None = None, cap: int = SCAN_CAP) -> tuple[list[str], bool]:
         keys = []
-        for k in self._call(self._r.scan_iter, match=match, count=1000):
-            keys.append(k.decode("utf-8", "replace"))
-            if len(keys) >= cap:
-                return keys, True
+        with self._errors():  # scan_iter is lazy: errors surface while iterating
+            for k in self._r.scan_iter(match=match, count=1000):
+                keys.append(k.decode("utf-8", "replace"))
+                if len(keys) >= cap:
+                    return keys, True
         return keys, False
 
     def _keys_of(self, pattern: str, cap: int) -> list[str]:

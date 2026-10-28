@@ -72,3 +72,10 @@ def test_unreachable():
     with pytest.raises(StoreUnavailable):
         down.ping()
     down.close()
+
+
+@pytest.mark.parametrize("cy", ["TERMINATE TRANSACTIONS 'neo4j-transaction-1'",
+                                "CALL db.resampleOutdatedIndexes()"])
+def test_side_effect_statements_blocked(a, cy):
+    with pytest.raises(WriteBlocked):
+        a.query(cy)

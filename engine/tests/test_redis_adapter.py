@@ -88,3 +88,10 @@ def test_unreachable():
     with pytest.raises(StoreUnavailable):
         down.ping()
     down.close()
+
+
+def test_scan_errors_are_store_unavailable():
+    down = RedisAdapter("redis://127.0.0.1:1")
+    with pytest.raises(StoreUnavailable):
+        down.list_collections()
+    down.close()

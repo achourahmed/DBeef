@@ -1,5 +1,6 @@
 """Read-only Neo4j adapter."""
 
+import re
 from typing import Any
 
 import neo4j
@@ -11,6 +12,10 @@ from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, 
                    WriteBlocked, clamp_limit, to_json_safe)
 
 _DESCRIBE_SAMPLE = 100
+# Neo4j reports these as plain reads ('r'), but they change server state:
+# TERMINATE kills other sessions' transactions, the procedures touch stats and indexes.
+_SIDE_EFFECTS = re.compile(r"\bTERMINATE\s+TRANSACTIONS?\b|\bdb\.(stats\.|resample|clearQueryCaches)"
+                           r"|\bdbms\.(kill|clearQueryCaches)", re.IGNORECASE)
 
 
 def _quote(name: str) -> str:
@@ -87,9 +92,12 @@ class Neo4jAdapter(Adapter):
         return out
 
     def _known(self, name: str) -> Collection:
-        for c in self.list_collections():
-            if c.name == name:
-                return c
+        _, labels = self._read("CALL db.labels() YIELD label RETURN label")
+        if any(r[0] == name for r in labels):
+            return Collection(name=name, kind="label", count=None)
+        _, types = self._read("CALL db.relationshipTypes() YIELD relationshipType AS t RETURN t")
+        if any(r[0] == name for r in types):
+            return Collection(name=name, kind="rel_type", count=None)
         raise NotFound(f"no label or relationship type {name!r}")
 
     def _items(self, coll: Collection, limit: int) -> list:
@@ -128,6 +136,8 @@ class Neo4jAdapter(Adapter):
 
     def query(self, text: str, limit: int | None = None) -> QueryResult:
         n = clamp_limit(limit)
+        if _SIDE_EFFECTS.search(text):
+            raise WriteBlocked("read-only store: statement changes server state")
         try:
             with self._session() as s:
                 qt = s.run("EXPLAIN " + text).consume().query_type

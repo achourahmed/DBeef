@@ -32,3 +32,16 @@ def test_suggested_edge(tmp_path):
 def test_statuses_isolate_failures(project):
     st = {s.name: s.status for s in project.statuses()}
     assert st == {"runs": "ok", "roster": "ok", "jobs": "error"}
+
+
+def test_bad_store_config_and_broken_view_isolated(tmp_path):
+    good = make_db(tmp_path / "good.db", "CREATE TABLE t(x); CREATE TABLE g(y); "
+                   "CREATE VIEW v AS SELECT * FROM g; DROP TABLE g;")
+    p = Project(ProjectConfig.model_validate({"project": "x", "stores": {
+        "good": {"type": "sqlite", "path": str(good)},
+        "jobs": {"type": "redis", "url": "localhost:6379"}}}))
+    st = {s.name: s.status for s in p.statuses()}
+    assert st == {"good": "ok", "jobs": "error"}
+    m = build_schema_map(p)
+    assert "good/t" in {n.id for n in m.nodes} and [e.name for e in m.errors] == ["jobs"]
+    p.close()

@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .adapters import make_adapter
-from .adapters.base import Adapter, NotFound, StoreUnavailable
+from .adapters.base import Adapter, DBeefError, NotFound, StoreUnavailable
 from .config import ProjectConfig
 
 
@@ -29,7 +29,10 @@ class Project:
             raise NotFound(f"no store {store!r} in project {self.config.project!r}")
         with self._lock:
             if store not in self._adapters:
-                self._adapters[store] = self._factory(self.config.stores[store])
+                try:
+                    self._adapters[store] = self._factory(self.config.stores[store])
+                except Exception as e:  # bad URI/scheme in config: report it, don't 500
+                    raise StoreUnavailable(f"cannot create adapter: {e}") from e
             a = self._adapters[store]
         # Ping every time so a store that comes back up recovers without a restart.
         a.ping()
@@ -41,7 +44,7 @@ class Project:
             try:
                 self.adapter(name)
                 out.append(StoreStatus(name=name, type=cfg.type, status="ok"))
-            except StoreUnavailable as e:
+            except DBeefError as e:
                 out.append(StoreStatus(name=name, type=cfg.type, status="error", message=e.message))
         return out
 

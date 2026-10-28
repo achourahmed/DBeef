@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field as PField
 
-from .adapters.base import DBeefError, Field, StoreUnavailable
+from .adapters.base import DBeefError, Field
 from .project import Project, StoreStatus
 
 SUGGEST_STOPLIST = {"id", "_id", "name", "type", "status", "value", "created_at", "updated_at", "key", "$key"}
@@ -50,7 +50,7 @@ def build_schema_map(project: Project) -> SchemaMap:
         try:
             adapter = project.adapter(store)
             collections = adapter.list_collections()
-        except StoreUnavailable as e:
+        except DBeefError as e:  # one failing store must not abort the whole map
             errors.append(StoreStatus(name=store, type=cfg.type, status="error", message=e.message))
             continue
         for coll in collections:
