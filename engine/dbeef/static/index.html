@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBeef dev page</title>
+<style>
+  :root { --bg:#fff; --fg:#1d1d1f; --muted:#6b6b70; --line:#ddd; --ok:#1a7f37; --err:#c62828; --accent:#2f6feb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16171a; --fg:#e8e8ea; --muted:#9a9aa1; --line:#33343a; } }
+  body { margin:0; font:14px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; }
+  main { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 50px); }
+  nav { border-right:1px solid var(--line); padding:12px; overflow:auto; }
+  section { padding:12px 16px; overflow:auto; }
+  .store { font-weight:600; margin-top:10px; }
+  .badge { font-size:11px; padding:1px 6px; border-radius:8px; margin-left:6px; }
+  .ok { background:color-mix(in srgb, var(--ok) 15%, transparent); color:var(--ok); }
+  .error { background:color-mix(in srgb, var(--err) 15%, transparent); color:var(--err); }
+  .coll { cursor:pointer; padding:2px 8px; color:var(--accent); }
+  .coll:hover { text-decoration:underline; }
+  .muted { color:var(--muted); }
+  table { border-collapse:collapse; margin:8px 0; }
+  td, th { border:1px solid var(--line); padding:3px 8px; text-align:left; vertical-align:top; font-size:12px; max-width:420px; overflow-wrap:anywhere; }
+  textarea { width:100%; font-family:ui-monospace, monospace; min-height:60px; background:var(--bg); color:var(--fg); border:1px solid var(--line); }
+  button, select { font:inherit; }
+  .boxes { display:flex; flex-wrap:wrap; gap:10px; }
+  .box { border:1px solid var(--line); border-radius:6px; padding:6px 10px; min-width:160px; }
+  .edge-intra { color:var(--muted); } .edge-cross { color:var(--ok); } .edge-suggested { color:var(--accent); } .edge-broken { color:var(--err); }
+  pre { margin:4px 0; }
+</style>
+</head>
+<body>
+<header><b>DBeef</b><span class="muted">dev page (throwaway)</span>
+  <select id="project"></select><button id="mapBtn">Schema map</button><span id="status" class="muted"></span></header>
+<main>
+  <nav id="stores"></nav>
+  <section>
+    <div id="detail" class="muted">Pick a collection.</div>
+    <h3>Query</h3>
+    <select id="qstore"></select>
+    <textarea id="qtext" placeholder="SELECT … / MATCH … RETURN … / LRANGE key 0 9"></textarea>
+    <button id="run">Run</button>
+    <div id="qout"></div>
+  </section>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cell = v => esc(typeof v === "object" && v !== null ? JSON.stringify(v) : v);
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {"X-DBeef-Token": token, "Content-Type": "application/json"}});
+  const body = await r.json();
+  if (!r.ok) throw body.error || {code: r.status, message: r.statusText};
+  return body;
+}
+const P = () => encodeURIComponent($("project").value);
+const enc = s => s.split("/").map(encodeURIComponent).join("/");
+
+function table(res) {
+  return `<table><tr>${res.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    res.rows.map(r => `<tr>${r.map(v => `<td>${cell(v)}</td>`).join("")}</tr>`).join("") +
+    `</table>${res.truncated ? '<div class="muted">truncated</div>' : ""}`;
+}
+function showError(el, e) { el.innerHTML = `<div class="edge-broken">${esc(e.code)}: ${esc(e.message)}</div>`; }
+
+async function loadStores() {
+  const stores = await api(`/api/projects/${P()}/stores`);
+  $("qstore").innerHTML = stores.filter(s => s.status === "ok").map(s => `<option>${esc(s.name)}</option>`).join("");
+  const nav = $("stores"); nav.innerHTML = "";
+  for (const s of stores) {
+    nav.insertAdjacentHTML("beforeend", `<div class="store">${esc(s.name)} <span class="muted">${esc(s.type)}</span>` +
+      `<span class="badge ${s.status}">${s.status}</span></div>` + (s.message ? `<div class="muted">${esc(s.message)}</div>` : ""));
+    if (s.status !== "ok") continue;
+    const colls = await api(`/api/projects/${P()}/stores/${encodeURIComponent(s.name)}/collections`);
+    for (const c of colls) {
+      const d = document.createElement("div");
+      d.className = "coll";
+      d.textContent = `${c.name} (${c.count ?? "?"}${c.count_is_estimate ? "+" : ""})`;
+      d.onclick = () => showCollection(s.name, c.name);
+      nav.appendChild(d);
+    }
+  }
+}
+
+async function showCollection(store, name) {
+  const base = `/api/projects/${P()}/stores/${encodeURIComponent(store)}/collections/${enc(name)}`;
+  try {
+    const [d, rows] = await Promise.all([api(base), api(base + "/rows?limit=50")]);
+    $("detail").innerHTML = `<h3>${esc(store)} / ${esc(name)}</h3>` +
+      `<div><b>Fields:</b> ${d.fields.map(f => `${esc(f.name)} <span class="muted">${esc(f.type)}</span>`).join(", ")}</div>` +
+      `<div><b>Links:</b> ${d.links.map(l => `${esc(l.label)} → ${esc(l.to_collection)}`).join(", ") || "none"}</div>` + table(rows);
+  } catch (e) { showError($("detail"), e); }
+}
+
+async function showMap() {
+  try {
+    const m = await api(`/api/projects/${P()}/schema-map`);
+    const byStore = {};
+    m.nodes.forEach(n => (byStore[n.store] ??= []).push(n));
+    $("detail").innerHTML = `<h3>Schema map</h3>` + Object.entries(byStore).map(([s, ns]) =>
+      `<div class="store">${esc(s)}</div><div class="boxes">` + ns.map(n =>
+        `<div class="box"><b>${esc(n.collection)}</b> <span class="muted">${esc(n.kind)} · ${n.count ?? "?"}</span>` +
+        `<div class="muted">${n.fields.slice(0, 6).map(f => esc(f.name)).join(", ")}</div></div>`).join("") + `</div>`).join("") +
+      `<h4>Edges</h4>` + m.edges.map(e =>
+        `<pre class="edge-${e.kind}">${esc(e.from)}${e.from_field ? "." + esc(e.from_field) : ""} → ${esc(e.to)}${e.to_field ? "." + esc(e.to_field) : ""}  [${e.kind}] ${esc(e.label)}</pre>`).join("") +
+      (m.errors.length ? `<h4>Unavailable</h4>` + m.errors.map(s => `<div class="edge-broken">${esc(s.name)}: ${esc(s.message)}</div>`).join("") : "");
+  } catch (e) { showError($("detail"), e); }
+}
+
+$("run").onclick = async () => {
+  try {
+    const res = await api(`/api/projects/${P()}/stores/${encodeURIComponent($("qstore").value)}/query`,
+      {method: "POST", body: JSON.stringify({text: $("qtext").value, limit: 100})});
+    $("qout").innerHTML = table(res);
+  } catch (e) { showError($("qout"), e); }
+};
+$("mapBtn").onclick = showMap;
+$("project").onchange = loadStores;
+
+(async () => {
+  try {
+    const ps = await api("/api/projects");
+    $("project").innerHTML = ps.map(p => `<option>${esc(p.name)}</option>`).join("");
+    await loadStores();
+  } catch (e) { $("status").textContent = `${e.code}: ${e.message} (open with ?token=...)`; }
+})();
+</script>
+</body>
+</html>

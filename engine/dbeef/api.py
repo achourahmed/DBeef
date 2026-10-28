@@ -1,11 +1,12 @@
 """HTTP API the UI talks to (spec §4.3). FastAPI publishes the contract at /openapi.json."""
 
 import secrets
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from .adapters.base import Collection, DBeefError, Description, NotFound, QueryResult
@@ -57,6 +58,11 @@ def create_app(projects: dict[str, Project], token: str, allow_origins: list[str
         if p not in projects:
             raise NotFound(f"no project {p!r}")
         return projects[p]
+
+    @app.get("/", include_in_schema=False)
+    def dev_page():
+        # Throwaway page for checking the engine in a browser; the real UI lives in app/.
+        return FileResponse(Path(__file__).parent / "static" / "index.html")
 
     @app.get("/api/projects", response_model=list[ProjectInfo])
     def list_projects():

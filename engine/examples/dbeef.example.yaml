@@ -1,0 +1,14 @@
+# Example project config. Generate the data first: python examples/make_sample.py
+project: sample
+stores:
+  runs:   {type: sqlite, path: sample.db}   # relative paths resolve against this file
+  roster: {type: sqlite, path: roster.db}
+  # graph: {type: neo4j, uri: bolt://localhost:7687, user: neo4j, password: "${NEO4J_PASSWORD}"}
+  # jobs:  {type: redis, url: redis://localhost:6379/0}
+links:
+  - from: {store: runs, collection: runs, field: inchikey}
+    to:   {store: roster, collection: roster, field: inchikey}
+  # - from: {store: runs, collection: runs, field: inchikey}
+  #   to:   {store: graph, collection: Molecule, field: inchikey}
+  # - from: {store: jobs, collection: "rq:job:*", field: $key}
+  #   to:   {store: runs, collection: runs, field: run_id}
