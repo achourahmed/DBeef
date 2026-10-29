@@ -25,7 +25,7 @@ export default function App() {
   return (
     <div className="bg-background text-foreground flex h-screen flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-        <img src="/favicon.svg" alt="" className="size-6" />
+        <img src="/dbeef-logo.svg" alt="" className="h-8 w-auto" />
         <span className="font-semibold">DBeef</span>
         {projects.data && projects.data.length > 1 ? (
           <select
