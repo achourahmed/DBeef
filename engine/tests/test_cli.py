@@ -46,3 +46,9 @@ def test_handshake_line(tmp_path):
     finally:
         p.terminate()
         p.wait(timeout=10)
+
+
+def test_host_defaults_to_loopback():
+    # Only a container should ever bind wider; it then publishes the port on 127.0.0.1.
+    assert parse_args(["--config", "x.yaml"]).host == "127.0.0.1"
+    assert parse_args(["--config", "x.yaml", "--host", "0.0.0.0"]).host == "0.0.0.0"

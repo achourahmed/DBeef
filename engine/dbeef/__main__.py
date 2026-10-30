@@ -21,6 +21,7 @@ DEFAULT_ORIGINS = ["tauri://localhost", "http://tauri.localhost"]
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="dbeef-engine")
     ap.add_argument("--config", action="append", required=True, help="path to a dbeef.yaml (repeatable)")
+    ap.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
     ap.add_argument("--port", type=int, default=0, help="0 picks a free port")
     ap.add_argument("--dev-token", help="use a known token instead of a random one (dev and tests only)")
     ap.add_argument("--allow-origin", action="append", default=[], help="extra CORS origin (repeatable)")
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     app = create_app(projects, token, DEFAULT_ORIGINS + args.allow_origin)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", args.port))
+    sock.bind((args.host, args.port))
     print(json.dumps({"port": sock.getsockname()[1], "token": token}), flush=True)
     try:
         uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[sock])
