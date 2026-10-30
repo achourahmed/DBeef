@@ -12,6 +12,16 @@ Status: phase 1 (the engine). The design is in [docs/superpowers/specs/2026-10-2
 | `app/` | React + shadcn/ui UI, run in the browser for now (the Tauri shell comes later) |
 | `docs/` | Design spec and implementation plans |
 
+## Run with Docker
+
+The quickest way to try DBeef: one command starts the engine on the sample data and the UI with live reload.
+
+```bash
+docker compose up -d --build
+```
+
+Then open <http://localhost:5173>. Edits under `app/src` reload the page straight away; after an engine change, run the same command again. Both ports listen on 127.0.0.1 only. Stop everything with `docker compose down`.
+
 ## Run the engine
 
 Requires Python 3.12 or newer.

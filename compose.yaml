@@ -1,0 +1,19 @@
+# Dev stack: the engine on the sample data, and the UI with live reload.
+# Both ports are published on 127.0.0.1 only, so nothing outside this Mac can reach them.
+services:
+  engine:
+    build: ./engine
+    ports: ["127.0.0.1:8765:8765"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/openapi.json')"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: ./app
+    ports: ["127.0.0.1:5173:5173"]
+    volumes:
+      - ./app/src:/app/src
+      - ./app/public:/app/public
+    depends_on:
+      engine: {condition: service_healthy}
