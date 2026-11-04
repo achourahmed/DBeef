@@ -24,3 +24,7 @@ engine/examples/*.db
 .env
 .env.local
 .env.*.local
+
+# Playwright output
+test-results/
+playwright-report/
