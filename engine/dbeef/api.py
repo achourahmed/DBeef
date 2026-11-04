@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .adapters.base import Collection, DBeefError, Description, NotFound, QueryResult
+from .adapters.base import BadQuery, Collection, DBeefError, Description, NotFound, QueryResult
 from .project import Project, StoreStatus
 from .schema_map import SchemaMap, build_schema_map
 
@@ -102,8 +102,12 @@ def create_app(projects: dict[str, Project], token: str, allow_origins: list[str
 
     # Declared before the describe route: {c:path} would otherwise swallow "/rows".
     @app.get("/api/projects/{p}/stores/{s}/collections/{c:path}/rows", response_model=QueryResult)
-    def rows(p: str, s: str, c: str, limit: int | None = None):
-        return project(p).adapter(s).sample(c, limit)
+    def rows(p: str, s: str, c: str, limit: int | None = None, offset: int = 0,
+             eq_field: str | None = None, eq_value: str | None = None):
+        if (eq_field is None) != (eq_value is None):
+            raise BadQuery("eq_field and eq_value go together")
+        eq = (eq_field, eq_value) if eq_field is not None else None
+        return project(p).adapter(s).rows(c, limit, offset=offset, eq=eq)
 
     @app.get("/api/projects/{p}/stores/{s}/collections/{c:path}", response_model=Description)
     def describe(p: str, s: str, c: str):

@@ -100,6 +100,8 @@ class QueryResult(BaseModel):
     columns: list[str]
     rows: list[list[Any]]
     truncated: bool
+    offset: int = 0
+    total: int | None = None  # only when cheap to know (P2)
 
 
 class Adapter(ABC):
@@ -113,7 +115,15 @@ class Adapter(ABC):
     def describe(self, name: str) -> Description: ...
 
     @abstractmethod
-    def sample(self, name: str, limit: int | None = None) -> QueryResult: ...
+    def rows(self, collection: str, limit: int | None = None, offset: int = 0, order_by: str | None = None,
+             desc: bool = False, eq: tuple[str, str] | None = None, q: str | None = None) -> QueryResult:
+        """Items of one collection. `eq=(field, value)` keeps exact matches only."""
+
+
+def not_yet(order_by: str | None, q: str | None) -> None:
+    # shortcut: sorting and substring search arrive in roadmap P2; until then say so instead of ignoring them.
+    if order_by is not None or q is not None:
+        raise BadQuery("order_by and q are not supported yet")
 
     @abstractmethod
     def query(self, text: str, limit: int | None = None) -> QueryResult: ...

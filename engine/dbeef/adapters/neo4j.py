@@ -9,7 +9,7 @@ from neo4j.graph import Node, Path, Relationship
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    IntraLink, NotFound, QueryResult, QueryTimeout, StoreUnavailable,
-                   WriteBlocked, clamp_limit, to_json_safe)
+                   WriteBlocked, clamp_limit, not_yet, to_json_safe)
 
 _DESCRIBE_SAMPLE = 100
 # Neo4j reports these as plain reads ('r'), but they change server state:
@@ -24,9 +24,9 @@ def _quote(name: str) -> str:
 
 def _flat(v: Any) -> Any:
     if isinstance(v, Node):
-        return {"_id": v.element_id, "_labels": sorted(v.labels), **dict(v)}
+        return {"_element_id": v.element_id, "_labels": sorted(v.labels), **dict(v)}
     if isinstance(v, Relationship):
-        return {"_id": v.element_id, "_type": v.type, **dict(v)}
+        return {"_element_id": v.element_id, "_type": v.type, **dict(v)}
     if isinstance(v, Path):
         out: list = [_flat(v.start_node)]
         for rel in v.relationships:
@@ -100,11 +100,13 @@ class Neo4jAdapter(Adapter):
             return Collection(name=name, kind="rel_type", count=None)
         raise NotFound(f"no label or relationship type {name!r}")
 
-    def _items(self, coll: Collection, limit: int) -> list:
+    def _items(self, coll: Collection, limit: int, offset: int = 0, eq: tuple[str, str] | None = None) -> list:
         q = _quote(coll.name)
-        cypher = (f"MATCH (n:{q}) RETURN n LIMIT $lim" if coll.kind == "label"
-                  else f"MATCH ()-[n:{q}]->() RETURN n LIMIT $lim")
-        return [r[0] for r in self._read(cypher, {"lim": limit}, limit=limit)[1]]
+        match = f"MATCH (n:{q})" if coll.kind == "label" else f"MATCH ()-[n:{q}]->()"
+        # n[$f] is null for a property the item lacks, so an unknown field simply matches nothing.
+        where = " WHERE n[$f] = $v" if eq else ""
+        params = {"lim": limit, "off": offset, **({"f": eq[0], "v": eq[1]} if eq else {})}
+        return [r[0] for r in self._read(f"{match}{where} RETURN n SKIP $off LIMIT $lim", params, limit=limit)[1]]
 
     def describe(self, name: str) -> Description:
         coll = self._known(name)
@@ -122,17 +124,18 @@ class Neo4jAdapter(Adapter):
         return Description(collection=coll, fields=[Field(name=k, type=t) for k, t in sorted(types.items())],
                            links=links)
 
-    def sample(self, name: str, limit: int | None = None) -> QueryResult:
-        coll = self._known(name)
+    def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
+        not_yet(order_by, q)
+        coll = self._known(collection)
         n = clamp_limit(limit)
-        items = self._items(coll, n + 1)
+        items = self._items(coll, n + 1, offset, eq)
         keys = sorted({k for item in items for k in dict(item)})
-        extra = ["_from", "_to"] if coll.kind == "rel_type" else []
+        extra = ["_from_id", "_to_id"] if coll.kind == "rel_type" else []
         rows = []
         for item in items[:n]:
             ends = [item.start_node.element_id, item.end_node.element_id] if extra else []
             rows.append([item.element_id, *ends, *(to_json_safe(dict(item).get(k)) for k in keys)])
-        return QueryResult(columns=["_id", *extra, *keys], rows=rows, truncated=len(items) > n)
+        return QueryResult(columns=["_element_id", *extra, *keys], rows=rows, truncated=len(items) > n, offset=offset)
 
     def query(self, text: str, limit: int | None = None) -> QueryResult:
         n = clamp_limit(limit)

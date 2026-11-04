@@ -61,9 +61,9 @@ def test_patterns_and_describe(keys, a):
 
 @needs_redis
 def test_binary_and_big_values(keys, a):
-    row = a.sample(f"{keys.prefix}:job:*").rows[0]
-    assert row[3]["data"].startswith("<binary ")
-    big = a.sample(f"{keys.prefix}:big").rows[0][3]
+    row = a.rows(f"{keys.prefix}:job:*").rows[0]
+    assert row[4]["data"].startswith("<binary ")
+    big = a.rows(f"{keys.prefix}:big").rows[0][4]
     assert big.startswith("x" * 1000) and big.endswith("(+4000 chars)")
 
 
@@ -114,3 +114,19 @@ def test_known_probes_the_pattern_instead_of_scanning_everything():
     assert FakeRedis.calls and all(m is not None for m in FakeRedis.calls)
     with pytest.raises(NotFound):
         a._known("rq:nothing:*")
+
+
+# P1: rows(eq=…) with the $key column
+
+@needs_redis
+def test_rows_key_column_and_eq(keys, a):
+    r = a.rows(f"{keys.prefix}:job:*")
+    assert r.columns == ["$key", "key", "type", "ttl", "value"]
+    assert {row[0] for row in r.rows} == {"1a2b3c", "4d5e6f"}
+    hit = a.rows(f"{keys.prefix}:job:*", eq=("$key", "1a2b3c"))
+    assert [row[1] for row in hit.rows] == [f"{keys.prefix}:job:1a2b3c"]
+    assert a.rows(f"{keys.prefix}:job:*", eq=("$key", "zzz")).rows == []
+    by_field = a.rows(f"{keys.prefix}:job:*", eq=("status", "finished"))
+    assert len(by_field.rows) == 2
+    assert a.rows(f"{keys.prefix}:job:*", eq=("status", "nope")).rows == []
+    assert len(a.rows(f"{keys.prefix}:job:*", limit=1, offset=1).rows) == 1

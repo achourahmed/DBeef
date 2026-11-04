@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    IntraLink, NotFound, QueryResult, QueryTimeout, StoreUnavailable,
-                   WriteBlocked, clamp_limit, to_json_safe)
+                   WriteBlocked, clamp_limit, not_yet, to_json_safe)
 
 _ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ,
                     sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE}
@@ -110,10 +110,20 @@ class SqliteAdapter(Adapter):
         return Description(collection=coll, fields=[Field(name=c[1], type=c[2] or "") for c in cols],
                            links=links)
 
-    def sample(self, name: str, limit: int | None = None) -> QueryResult:
-        self._known(name)
+    def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
+        not_yet(order_by, q)
+        self._known(collection)
         n = clamp_limit(limit)
-        return self._run(f"SELECT * FROM {_quote(name)} LIMIT ?", (n + 1,), limit=n)
+        sql, params = f"SELECT * FROM {_quote(collection)}", []
+        if eq:
+            field, value = eq
+            if field not in {c[1] for c in self._run(f"PRAGMA table_info({_quote(collection)})").rows}:
+                raise BadQuery(f"no field {field!r} in {collection!r}")
+            # Column affinity makes '5' match an INTEGER 5, so one parameterised '=' is enough.
+            sql, params = sql + f" WHERE {_quote(field)} = ?", [value]
+        r = self._run(sql + " LIMIT ? OFFSET ?", (*params, n + 1, offset), limit=n)
+        r.offset = offset
+        return r
 
     def query(self, text: str, limit: int | None = None) -> QueryResult:
         return self._run(text, limit=limit)

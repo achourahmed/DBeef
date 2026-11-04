@@ -37,16 +37,16 @@ def test_lists_and_describes(sample_db):
 
 
 def test_sample_truncates_and_is_json_safe(sample_db):
-    r = SqliteAdapter(sample_db).sample("runs", limit=2)
+    r = SqliteAdapter(sample_db).rows("runs", limit=2)
     assert len(r.rows) == 2 and r.truncated is True
-    json.dumps(SqliteAdapter(sample_db).sample("runs").model_dump(), allow_nan=False)
+    json.dumps(SqliteAdapter(sample_db).rows("runs").model_dump(), allow_nan=False)
 
 
 def test_odd_name_and_unknown_name(sample_db):
     a = SqliteAdapter(sample_db)
-    assert len(a.sample('my "odd" table').rows) == 1
+    assert len(a.rows('my "odd" table').rows) == 1
     with pytest.raises(NotFound):
-        a.sample('runs"; DROP TABLE runs; --')
+        a.rows('runs"; DROP TABLE runs; --')
 
 
 @pytest.mark.parametrize("sql", [
@@ -92,14 +92,14 @@ def test_broken_view_does_not_break_store(sample_db):
     a = SqliteAdapter(sample_db)
     counts = {c.name: c.count for c in a.list_collections()}
     assert counts["v"] is None and counts["runs"] == 3
-    assert len(a.sample("runs").rows) == 3
+    assert len(a.rows("runs").rows) == 3
 
 
 def test_sample_and_describe_do_not_count(sample_db):
     a = SqliteAdapter(sample_db)
     seen = []
     a._connect().set_trace_callback(seen.append)
-    a.sample("runs")
+    a.rows("runs")
     a.describe("run_facts")
     assert not any("COUNT(" in s.upper() for s in seen)
 
@@ -111,7 +111,7 @@ def test_immutable_uri_never_creates_wal_or_shm(sample_db):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.close()
     a = SqliteAdapter(sample_db, immutable=True)
-    assert len(a.sample("runs").rows) == 3
+    assert len(a.rows("runs").rows) == 3
     assert not (sample_db.parent / "sample.db-shm").exists()
     with pytest.raises(WriteBlocked):
         a.query("DELETE FROM runs")
@@ -123,3 +123,20 @@ def test_user_table_named_like_internal_is_listed(sample_db):
     conn.commit()
     conn.close()
     assert "sqlite3_runs" in {c.name for c in SqliteAdapter(sample_db).list_collections()}
+
+
+# P1: rows(eq=…, offset=…)
+
+def test_rows_eq_and_offset(sample_db):
+    a = SqliteAdapter(sample_db)
+    hit = a.rows("runs", eq=("inchikey", "BBB"))
+    assert [r[0] for r in hit.rows] == ["r2"] and hit.offset == 0 and hit.total is None
+    assert a.rows("runs", eq=("inchikey", "nope")).rows == []
+    assert a.rows("runs", eq=("inchikey", "x' OR '1'='1")).rows == []
+    page = a.rows("runs", limit=2, offset=2)
+    assert [r[0] for r in page.rows] == ["r3"] and page.truncated is False and page.offset == 2
+    assert a.rows("runs", offset=99).rows == []
+    with pytest.raises(BadQuery):
+        a.rows("runs", eq=("ghost", "1"))
+    with pytest.raises(BadQuery):
+        a.rows("runs", order_by="run_id")

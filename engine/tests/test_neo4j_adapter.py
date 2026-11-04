@@ -49,8 +49,8 @@ def test_lists_and_describes(graph, a):
 
 
 def test_sample_json_safe(graph, a):
-    r = a.sample(graph.drug)
-    assert r.columns[0] == "_id" and len(r.rows) == 2
+    r = a.rows(graph.drug)
+    assert r.columns[0] == "_element_id" and len(r.rows) == 2
     json.dumps(r.model_dump(), allow_nan=False)
 
 
@@ -64,7 +64,7 @@ def test_writes_blocked(graph, a, cy):
 
 def test_unknown_label(graph, a):
     with pytest.raises(NotFound):
-        a.sample("Nope` RETURN 1 //")
+        a.rows("Nope` RETURN 1 //")
 
 
 def test_unreachable():
@@ -79,3 +79,15 @@ def test_unreachable():
 def test_side_effect_statements_blocked(a, cy):
     with pytest.raises(WriteBlocked):
         a.query(cy)
+
+
+# P1: rows(eq=…) and stable id columns
+
+def test_rows_eq_and_element_id(graph, a):
+    r = a.rows(graph.drug, eq=("name", "aspirin"))
+    assert r.columns[0] == "_element_id" and len(r.rows) == 1
+    assert a.rows(graph.drug, eq=("name", "nobody")).rows == []
+    assert a.rows(graph.drug, eq=("ghost", "x")).rows == []
+    assert len(a.rows(graph.drug, limit=1, offset=1).rows) == 1
+    rel = a.rows("BINDS")
+    assert rel.columns[:3] == ["_element_id", "_from_id", "_to_id"]

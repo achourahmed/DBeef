@@ -9,7 +9,7 @@ import redis
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    NotFound, QueryResult, QueryTimeout, StoreUnavailable, WriteBlocked,
-                   clamp_limit, to_json_safe)
+                   clamp_limit, not_yet, to_json_safe)
 
 SCAN_CAP = 10_000
 _DESCRIBE_SAMPLE = 20
@@ -24,6 +24,11 @@ TYPE TTL PTTL EXISTS SCAN DBSIZE
 
 def key_pattern(key: str) -> str:
     return ":".join("*" if re.search(r"\d", seg) or len(seg) >= 20 else seg for seg in key.split(":"))
+
+
+def key_value(pattern: str, key: str) -> str:
+    # The '$key' field: the segments a pattern collapsed to '*', joined back with ':'.
+    return ":".join(k for p, k in zip(pattern.split(":"), key.split(":")) if p == "*")
 
 
 def _glob(pattern: str) -> str:
@@ -110,15 +115,26 @@ class RedisAdapter(Adapter):
             return to_json_safe(self._call(r.xrange, key, count=_PREVIEW))
         return None
 
-    def sample(self, name: str, limit: int | None = None) -> QueryResult:
-        self._known(name)
+    def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
+        not_yet(order_by, q)
+        self._known(collection)
         n = clamp_limit(limit)
-        keys = self._keys_of(name, n + 1)
+        if eq and eq[0] == "$key":
+            key = collection.replace("*", eq[1])
+            keys = [key] if self._call(self._r.exists, key) else []
+        else:
+            keys = self._keys_of(collection, SCAN_CAP if eq else offset + n + 1)
+            if eq:  # a hash field: filter the whole (capped) pattern, since Redis cannot
+                field, value = eq
+                keys = [k for k in keys if (v := self._call(self._r.hget, k, field)) is not None
+                        and v.decode("utf-8", "replace") == value]
+            keys = keys[offset:]
         rows = []
         for k in keys[:n]:
             kind = self._call(self._r.type, k).decode()
-            rows.append([k, kind, self._call(self._r.ttl, k), self._value(k, kind)])
-        return QueryResult(columns=["key", "type", "ttl", "value"], rows=rows, truncated=len(keys) > n)
+            rows.append([key_value(collection, k), k, kind, self._call(self._r.ttl, k), self._value(k, kind)])
+        return QueryResult(columns=["$key", "key", "type", "ttl", "value"], rows=rows,
+                           truncated=len(keys) > n, offset=offset)
 
     def query(self, text: str, limit: int | None = None) -> QueryResult:
         n = clamp_limit(limit)
