@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { api } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { ErrorNote } from './ErrorNote'
+import { ExportMenu } from './ExportMenu'
 import { Pager } from './Pager'
 import { ResultTable, type Sort } from './ResultTable'
 import type { Selection } from './Sidebar'
@@ -109,6 +110,7 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
             </Button>
           </Badge>
         )}
+        {rows.data && <div className="ml-auto"><ExportMenu result={rows.data} name={`${store}-${collection}`} /></div>}
       </div>
       {rows.error && <ErrorNote error={rows.error} />}
       {rows.loading && !rows.data && <p className="text-muted-foreground text-sm">loading…</p>}

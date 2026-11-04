@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { api, ApiError, type QueryResult } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
+import { addHistory } from '@/lib/queryStore'
 import { ErrorNote } from './ErrorNote'
+import { ExportMenu } from './ExportMenu'
+import { QueryLibrary } from './QueryLibrary'
 import { ResultTable } from './ResultTable'
 
 const PLACEHOLDER: Record<string, string> = {
@@ -24,6 +27,7 @@ export function QueryPanel({ project, store, onStore, onTrace }: {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
+  const [runs, setRuns] = useState(0)
   const current = stores.data?.find((s) => s.name === store) ?? stores.data?.[0]
 
   async function run() {
@@ -31,12 +35,17 @@ export function QueryPanel({ project, store, onStore, onTrace }: {
     setBusy(true)
     setError(null)
     try {
-      setResult(await api.query(project, current.name, text, 500))
+      const r = await api.query(project, current.name, text, 500)
+      setResult(r)
+      addHistory(project, current.name, { text, rows: r.rows.length, error: null })
     } catch (e) {
+      const err = e instanceof ApiError ? e : new ApiError('internal', String(e))
       setResult(null)
-      setError(e instanceof ApiError ? e : new ApiError('internal', String(e)))
+      setError(err)
+      addHistory(project, current.name, { text, rows: null, error: err.code })
     } finally {
       setBusy(false)
+      setRuns((n) => n + 1)
     }
   }
 
@@ -54,8 +63,9 @@ export function QueryPanel({ project, store, onStore, onTrace }: {
             </option>
           ))}
         </select>
-        <span className="text-muted-foreground text-xs">Read-only. Writes are refused by the engine.</span>
-        <Button size="sm" className="ml-auto" onClick={run} disabled={busy || !text.trim()}>
+        <span className="text-muted-foreground mr-auto text-xs">Read-only. Writes are refused by the engine.</span>
+        {current && <QueryLibrary project={project} store={current.name} current={text} onPick={setText} version={runs} />}
+        <Button size="sm" onClick={run} disabled={busy || !text.trim()}>
           <Play /> Run
         </Button>
       </div>
@@ -73,7 +83,12 @@ export function QueryPanel({ project, store, onStore, onTrace }: {
       />
       <p className="text-muted-foreground text-xs">⌘ Enter to run · up to 500 rows</p>
       {error && <ErrorNote error={error} />}
-      {result && <ResultTable result={result} onTrace={onTrace} />}
+      {result && (
+        <>
+          <div className="flex justify-end"><ExportMenu result={result} name={`${project}-${current?.name}-query`} /></div>
+          <ResultTable result={result} onTrace={onTrace} />
+        </>
+      )}
     </div>
   )
 }
