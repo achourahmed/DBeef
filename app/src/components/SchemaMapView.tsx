@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   Background, Controls, Handle, MarkerType, Panel, Position, ReactFlow,
   type Edge, type Node, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
-import { api, type MapEdge, type MapNode, type SchemaMap } from '@/api/client'
+import { api, ApiError, type LinkCheck, type MapEdge, type MapNode, type SchemaMap } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { ErrorNote } from './ErrorNote'
 import type { Selection } from './Sidebar'
@@ -23,6 +24,8 @@ const EDGE_STYLE: Record<MapEdge['kind'], { stroke: string; dash?: string; width
 }
 
 type NodeData = { node: MapNode | null; id: string }
+type EdgeData = { edge: MapEdge }
+type CheckState = 'loading' | LinkCheck | ApiError
 
 const height = (n: MapNode | null) => (n ? 44 + Math.min(n.fields.length, MAX_FIELDS + 1) * 18 : 56)
 
@@ -72,17 +75,18 @@ function CollectionNode({ data }: NodeProps<Node<NodeData>>) {
 
 const nodeTypes = { collection: CollectionNode }
 
-async function toFlow(map: SchemaMap): Promise<{ nodes: Node<NodeData>[]; edges: Edge[] }> {
+async function toFlow(map: SchemaMap): Promise<{ nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }> {
   const byId = new Map<string, MapNode | null>(map.nodes.map((n) => [n.id, n]))
   // A broken link can point at a collection that doesn't exist: draw a placeholder for it.
   for (const e of map.edges) for (const id of [e.from, e.to]) if (!byId.has(id)) byId.set(id, null)
 
-  const edges: Edge[] = map.edges.map((e, i) => {
+  const edges: Edge<EdgeData>[] = map.edges.map((e, i) => {
     const s = EDGE_STYLE[e.kind]
     return {
       id: `e${i}`,
       source: e.from,
       target: e.to,
+      data: { edge: e },
       label: e.label,
       labelStyle: { fontSize: 10, fill: s.stroke },
       labelBgStyle: { fillOpacity: 0.85 },
@@ -111,11 +115,34 @@ async function toFlow(map: SchemaMap): Promise<{ nodes: Node<NodeData>[]; edges:
   return { nodes, edges }
 }
 
+// Which config link draws this edge: same two ends and the same fields.
+function linkIndex(e: MapEdge, links: { index: number; from: { store: string; collection: string; field: string }; to: { store: string; collection: string; field: string } }[]) {
+  return links.find((l) => `${l.from.store}/${l.from.collection}` === e.from && `${l.to.store}/${l.to.collection}` === e.to
+    && l.from.field === e.from_field && l.to.field === e.to_field)?.index
+}
+
 export function SchemaMapView({ project, onSelect }: { project: string; onSelect: (s: Selection) => void }) {
   const map = useLoad(() => api.schemaMap(project), [project])
+  const links = useLoad(() => api.links(project), [project])
   // Keeps the map it was laid out from, so a project switch never shows the old layout.
-  const [flow, setFlow] = useState<{ src: SchemaMap; nodes: Node<NodeData>[]; edges: Edge[] } | null>(null)
+  const [flow, setFlow] = useState<{ src: SchemaMap; nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] } | null>(null)
+  const [checks, setChecks] = useState<Record<string, CheckState>>({})
+  const [open, setOpen] = useState<string | null>(null)
   const dark = matchMedia('(prefers-color-scheme: dark)').matches
+
+  async function check(edgeId: string, e: MapEdge) {
+    const i = linkIndex(e, links.data ?? [])
+    if (i === undefined) return
+    setOpen(edgeId)
+    setChecks((c) => ({ ...c, [edgeId]: 'loading' }))
+    try {
+      setChecks((c) => ({ ...c, [edgeId]: 'loading' }))
+      const result = await api.checkLink(project, i)
+      setChecks((c) => ({ ...c, [edgeId]: result }))
+    } catch (err) {
+      setChecks((c) => ({ ...c, [edgeId]: err instanceof ApiError ? err : new ApiError('internal', String(err)) }))
+    }
+  }
 
   useEffect(() => {
     const src = map.data
@@ -124,10 +151,24 @@ export function SchemaMapView({ project, onSelect }: { project: string; onSelect
 
   if (map.error) return <div className="p-6"><ErrorNote error={map.error} /></div>
   if (!flow || flow.src !== map.data) return <p className="text-muted-foreground p-6 text-sm">laying out the map…</p>
+  // After a check, the edge label carries the verdict.
+  const edges = flow.edges.map((e) => {
+    const c = checks[e.id]
+    if (!c) return e
+    const verdict = c === 'loading' ? 'checking…' : c instanceof ApiError ? `check failed: ${c.code}`
+      : c.missing === 0 ? `✓ ${c.sampled} checked` : `✗ ${c.missing} of ${c.sampled} missing`
+    const bad = c !== 'loading' && (c instanceof ApiError || c.missing > 0)
+    return { ...e, label: `${e.data!.edge.label} · ${verdict}`, labelStyle: { fontSize: 10, fill: bad ? '#dc2626' : '#16a34a' } }
+  })
+  const opened = open ? { edge: flow.edges.find((e) => e.id === open)?.data?.edge, state: checks[open] } : null
   return (
     <ReactFlow
       nodes={flow.nodes}
-      edges={flow.edges}
+      edges={edges}
+      onEdgeClick={(_, e) => {
+        const edge = (e.data as EdgeData | undefined)?.edge
+        if (edge && (edge.kind === 'cross' || edge.kind === 'broken')) check(e.id, edge)
+      }}
       nodeTypes={nodeTypes}
       colorMode={dark ? 'dark' : 'light'}
       nodesConnectable={false}
@@ -150,8 +191,33 @@ export function SchemaMapView({ project, onSelect }: { project: string; onSelect
               <span>{s.label}</span>
             </div>
           ))}
+          <p className="text-muted-foreground pt-1">click a cross-store link to check it against the data</p>
         </div>
       </Panel>
+      {opened?.edge && (
+        <Panel position="bottom-right">
+          <div className="bg-card/95 w-80 space-y-1 rounded-md border p-3 text-xs shadow-sm">
+            <div className="flex items-start gap-2">
+              <p className="font-mono">{opened.edge.from}.{opened.edge.from_field} → {opened.edge.to}.{opened.edge.to_field}</p>
+              <Button variant="ghost" size="sm" className="ml-auto h-5 px-1" onClick={() => setOpen(null)}>✕</Button>
+            </div>
+            {opened.state === 'loading' && <p className="text-muted-foreground">checking a sample of values…</p>}
+            {opened.state instanceof ApiError && <p className="text-destructive">{opened.state.code}: {opened.state.message}</p>}
+            {opened.state && opened.state !== 'loading' && !(opened.state instanceof ApiError) && (
+              <>
+                <p className={opened.state.missing ? 'text-red-600' : 'text-emerald-600'}>
+                  {opened.state.missing} of {opened.state.sampled} sampled values have no match
+                </p>
+                {opened.state.examples.length > 0 && (
+                  <ul className="text-muted-foreground max-h-32 overflow-auto font-mono">
+                    {opened.state.examples.map((v) => <li key={v} className="truncate" title={v}>{v}</li>)}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        </Panel>
+      )}
       {flow.src.errors.length > 0 && (
         <Panel position="top-right">
           <div className="bg-card/90 max-w-80 space-y-1 rounded-md border border-red-500/50 p-2 text-xs shadow-sm">

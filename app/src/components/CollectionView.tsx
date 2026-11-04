@@ -9,10 +9,11 @@ import { ErrorNote } from './ErrorNote'
 import { ResultTable } from './ResultTable'
 import type { Selection } from './Sidebar'
 
-export function CollectionView({ project, selection, onSelect }: {
+export function CollectionView({ project, selection, onSelect, onTrace }: {
   project: string
   selection: Selection | null
   onSelect: (s: Selection) => void
+  onTrace?: (value: string) => void
 }) {
   const [limit, setLimit] = useState(100)
   const { store, collection, eq = null } = selection ?? { store: '', collection: '' }
@@ -74,7 +75,7 @@ export function CollectionView({ project, selection, onSelect }: {
       </div>
       {rows.error && <ErrorNote error={rows.error} />}
       {rows.loading && !rows.data && <p className="text-muted-foreground text-sm">loading…</p>}
-      {rows.data && <ResultTable result={rows.data} />}
+      {rows.data && <ResultTable result={rows.data} onTrace={onTrace} />}
     </div>
   )
 }

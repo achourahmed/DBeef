@@ -13,10 +13,11 @@ const PLACEHOLDER: Record<string, string> = {
   redis: 'SCAN 0 MATCH rq:* COUNT 100',
 }
 
-export function QueryPanel({ project, store, onStore }: {
+export function QueryPanel({ project, store, onStore, onTrace }: {
   project: string
   store: string | null
   onStore: (s: string) => void
+  onTrace?: (value: string) => void
 }) {
   const stores = useLoad(() => api.stores(project), [project])
   const [text, setText] = useState('')
@@ -72,7 +73,7 @@ export function QueryPanel({ project, store, onStore }: {
       />
       <p className="text-muted-foreground text-xs">⌘ Enter to run · up to 500 rows</p>
       {error && <ErrorNote error={error} />}
-      {result && <ResultTable result={result} />}
+      {result && <ResultTable result={result} onTrace={onTrace} />}
     </div>
   )
 }

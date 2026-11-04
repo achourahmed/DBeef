@@ -7,7 +7,12 @@ import { ResultTable } from './ResultTable'
 import type { Selection } from './Sidebar'
 import type { TraceQuery } from './TraceBar'
 
-function Hit({ hit, value, onOpen }: { hit: TraceHit; value: string; onOpen: (s: Selection) => void }) {
+function Hit({ hit, value, onOpen, onTrace }: {
+  hit: TraceHit
+  value: string
+  onOpen: (s: Selection) => void
+  onTrace?: (value: string) => void
+}) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -20,15 +25,16 @@ function Hit({ hit, value, onOpen }: { hit: TraceHit; value: string; onOpen: (s:
         <span className="text-muted-foreground font-mono text-[11px]">.{hit.field}</span>
         {hit.is_origin && <Badge className="bg-[#F0444B] text-white hover:bg-[#F0444B]">origin</Badge>}
       </div>
-      <ResultTable result={hit.rows} />
+      <ResultTable result={hit.rows} onTrace={onTrace} />
     </div>
   )
 }
 
-export function TraceView({ project, query, onOpen }: {
+export function TraceView({ project, query, onOpen, onTrace }: {
   project: string
   query: TraceQuery | null
   onOpen: (s: Selection) => void
+  onTrace?: (value: string) => void
 }) {
   const stores = useLoad(() => api.stores(project), [project])
   const result = useLoad(query ? () => api.trace(project, query.value, query.field) : null, [project, query])
@@ -70,7 +76,7 @@ export function TraceView({ project, query, onOpen }: {
               {err && <p className="text-destructive text-xs break-all">{err.message}</p>}
               {!err && hits.length === 0 && <p className="text-muted-foreground text-xs">not found</p>}
               {hits.map((h) => (
-                <Hit key={`${h.collection}.${h.field}`} hit={h} value={query.value} onOpen={onOpen} />
+                <Hit key={`${h.collection}.${h.field}`} hit={h} value={query.value} onOpen={onOpen} onTrace={onTrace} />
               ))}
             </section>
           )

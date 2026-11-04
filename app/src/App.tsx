@@ -21,6 +21,7 @@ export default function App() {
   const project = picked ?? projects.data?.[0]?.name ?? null
   // Field names the trace box offers: the ends of every configured link.
   const links = useLoad(project ? () => api.links(project) : null, [project])
+  const startTrace = (value: string) => { setTraceQuery({ value, field: null }); setTab('trace') }
   const traceFields = [...new Set((links.data ?? []).flatMap((l) => [l.from.field, l.to.field]))].sort()
 
   function select(s: Selection) {
@@ -76,13 +77,13 @@ export default function App() {
               <SchemaMapView project={project} onSelect={select} />
             </TabsContent>
             <TabsContent value="data" className="min-h-0 flex-1 overflow-auto">
-              <CollectionView project={project} selection={selection} onSelect={select} />
+              <CollectionView project={project} selection={selection} onSelect={select} onTrace={startTrace} />
             </TabsContent>
             <TabsContent value="query" className="min-h-0 flex-1 overflow-auto">
-              <QueryPanel project={project} store={queryStore} onStore={setQueryStore} />
+              <QueryPanel project={project} store={queryStore} onStore={setQueryStore} onTrace={startTrace} />
             </TabsContent>
             <TabsContent value="trace" className="min-h-0 flex-1">
-              <TraceView project={project} query={traceQuery} onOpen={select} />
+              <TraceView project={project} query={traceQuery} onOpen={select} onTrace={startTrace} />
             </TabsContent>
           </Tabs>
         </div>
