@@ -49,7 +49,9 @@ cd engine && .venv/bin/python -m dbeef --config examples/dbeef.example.yaml --po
 cd app && npm install && npm run dev -- --port 5173 --strictPort
 ```
 
-Then open <http://localhost:5173>. The UI reads the engine URL and token from `?engine=` and `?token=`, then from `app/.env` (see `app/.env.example`), then defaults to `http://127.0.0.1:8765` and `dev`. After an API change, regenerate the types with `npm run gen:api` while the engine runs.
+Then open <http://localhost:5173>. In the UI: the schema map (click a cross-store link to check it against the data), a Data tab with sortable columns, a substring filter, paging and CSV/JSON/Markdown export, a read-only Query tab with per-store history and saved queries, and a Trace tab that finds one value in every store. `⌘K` jumps anywhere, `⌘F` traces, `/` filters the sidebar, `?` lists the shortcuts.
+
+The UI reads the engine URL and token from `?engine=` and `?token=`, then from `app/.env` (see `app/.env.example`), then defaults to `http://127.0.0.1:8765` and `dev`. After an API change, regenerate the types with `npm run gen:api` while the engine runs.
 
 ## Use it on data that lives on another machine
 
