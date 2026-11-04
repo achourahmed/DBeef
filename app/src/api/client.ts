@@ -10,6 +10,10 @@ export type QueryResult = S['QueryResult']
 export type SchemaMap = S['SchemaMap']
 export type MapNode = S['MapNode']
 export type MapEdge = S['MapEdge']
+export type TraceResult = S['TraceResult']
+export type TraceHit = S['TraceHit']
+export type LinkInfo = S['LinkInfo']
+export type LinkCheck = S['LinkCheck']
 
 // Tauri will pass these in later; in the browser they come from ?engine= and ?token=, then .env.
 const params = new URLSearchParams(location.search)
@@ -49,9 +53,20 @@ export const api = {
   stores: (p: string) => call<StoreStatus[]>(`/api/projects/${enc(p)}/stores`),
   collections: (p: string, s: string) => call<Collection[]>(`${store(p, s)}/collections`),
   describe: (p: string, s: string, c: string) => call<Description>(`${store(p, s)}/collections/${encPath(c)}`),
-  rows: (p: string, s: string, c: string, limit: number) =>
-    call<QueryResult>(`${store(p, s)}/collections/${encPath(c)}/rows?limit=${limit}`),
+  rows: (p: string, s: string, c: string, opts: { limit: number; offset?: number; eq?: [string, string] | null }) => {
+    const qs = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset ?? 0) })
+    if (opts.eq) {
+      qs.set('eq_field', opts.eq[0])
+      qs.set('eq_value', opts.eq[1])
+    }
+    return call<QueryResult>(`${store(p, s)}/collections/${encPath(c)}/rows?${qs}`)
+  },
   query: (p: string, s: string, text: string, limit: number) =>
     call<QueryResult>(`${store(p, s)}/query`, { method: 'POST', body: JSON.stringify({ text, limit }) }),
   schemaMap: (p: string) => call<SchemaMap>(`/api/projects/${enc(p)}/schema-map`),
+  trace: (p: string, value: string, field: string | null = null, limit: number | null = null) =>
+    call<TraceResult>(`/api/projects/${enc(p)}/trace`, { method: 'POST', body: JSON.stringify({ value, field, limit }) }),
+  links: (p: string) => call<LinkInfo[]>(`/api/projects/${enc(p)}/links`),
+  checkLink: (p: string, i: number, sample = 200) =>
+    call<LinkCheck>(`/api/projects/${enc(p)}/links/${i}/check?sample=${sample}`),
 }

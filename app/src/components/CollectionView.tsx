@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
@@ -7,11 +9,16 @@ import { ErrorNote } from './ErrorNote'
 import { ResultTable } from './ResultTable'
 import type { Selection } from './Sidebar'
 
-export function CollectionView({ project, selection }: { project: string; selection: Selection | null }) {
+export function CollectionView({ project, selection, onSelect }: {
+  project: string
+  selection: Selection | null
+  onSelect: (s: Selection) => void
+}) {
   const [limit, setLimit] = useState(100)
-  const { store, collection } = selection ?? { store: '', collection: '' }
+  const { store, collection, eq = null } = selection ?? { store: '', collection: '' }
   const desc = useLoad(selection ? () => api.describe(project, store, collection) : null, [project, store, collection])
-  const rows = useLoad(selection ? () => api.rows(project, store, collection, limit) : null, [project, store, collection, limit])
+  const rows = useLoad(selection ? () => api.rows(project, store, collection, { limit, eq }) : null,
+    [project, store, collection, limit, eq?.[0], eq?.[1]])
 
   if (!selection) return <p className="text-muted-foreground p-6 text-sm">Pick a collection in the sidebar.</p>
   return (
@@ -45,6 +52,15 @@ export function CollectionView({ project, selection }: { project: string; select
       )}
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">Rows</span>
+        {eq && (
+          <Badge variant="outline" className="gap-1 font-mono">
+            {eq[0]} = {eq[1]}
+            <Button variant="ghost" size="icon" className="size-4" aria-label="clear filter"
+              onClick={() => onSelect({ store, collection })}>
+              <X className="size-3" />
+            </Button>
+          </Badge>
+        )}
         <span className="text-muted-foreground ml-auto text-xs">limit</span>
         <Input
           type="number"

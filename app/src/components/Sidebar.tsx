@@ -5,7 +5,7 @@ import { api, type StoreStatus } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { cn } from '@/lib/utils'
 
-export type Selection = { store: string; collection: string }
+export type Selection = { store: string; collection: string; eq?: [string, string] | null }
 
 function StoreItem({ project, store, selected, onSelect }: {
   project: string

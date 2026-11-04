@@ -2,11 +2,14 @@ import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ENGINE_URL } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
+import { cn } from '@/lib/utils'
 import { CollectionView } from '@/components/CollectionView'
 import { ErrorNote } from '@/components/ErrorNote'
 import { QueryPanel } from '@/components/QueryPanel'
 import { SchemaMapView } from '@/components/SchemaMapView'
 import { Sidebar, type Selection } from '@/components/Sidebar'
+import { TraceBar, type TraceQuery } from '@/components/TraceBar'
+import { TraceView } from '@/components/TraceView'
 
 export default function App() {
   const projects = useLoad(() => api.projects(), [])
@@ -14,7 +17,11 @@ export default function App() {
   const [selection, setSelection] = useState<Selection | null>(null)
   const [queryStore, setQueryStore] = useState<string | null>(null)
   const [tab, setTab] = useState('map')
+  const [traceQuery, setTraceQuery] = useState<TraceQuery | null>(null)
   const project = picked ?? projects.data?.[0]?.name ?? null
+  // Field names the trace box offers: the ends of every configured link.
+  const links = useLoad(project ? () => api.links(project) : null, [project])
+  const traceFields = [...new Set((links.data ?? []).flatMap((l) => [l.from.field, l.to.field]))].sort()
 
   function select(s: Selection) {
     setSelection(s)
@@ -41,7 +48,13 @@ export default function App() {
         ) : (
           project && <span className="text-muted-foreground text-sm">{project}</span>
         )}
-        <span className="text-muted-foreground ml-auto font-mono text-xs">{ENGINE_URL}</span>
+        {project && (
+          <div className="ml-auto">
+            <TraceBar fields={traceFields} value={traceQuery?.value}
+              onTrace={(q) => { setTraceQuery(q); setTab('trace') }} />
+          </div>
+        )}
+        <span className={cn('text-muted-foreground font-mono text-xs', !project && 'ml-auto')}>{ENGINE_URL}</span>
       </header>
 
       {projects.error && <div className="p-6"><ErrorNote error={projects.error} /></div>}
@@ -56,16 +69,20 @@ export default function App() {
                 <TabsTrigger value="map">Schema map</TabsTrigger>
                 <TabsTrigger value="data">Data</TabsTrigger>
                 <TabsTrigger value="query">Query</TabsTrigger>
+                <TabsTrigger value="trace">Trace</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="map" className="min-h-0 flex-1">
               <SchemaMapView project={project} onSelect={select} />
             </TabsContent>
             <TabsContent value="data" className="min-h-0 flex-1 overflow-auto">
-              <CollectionView project={project} selection={selection} />
+              <CollectionView project={project} selection={selection} onSelect={select} />
             </TabsContent>
             <TabsContent value="query" className="min-h-0 flex-1 overflow-auto">
               <QueryPanel project={project} store={queryStore} onStore={setQueryStore} />
+            </TabsContent>
+            <TabsContent value="trace" className="min-h-0 flex-1">
+              <TraceView project={project} query={traceQuery} onOpen={select} />
             </TabsContent>
           </Tabs>
         </div>
