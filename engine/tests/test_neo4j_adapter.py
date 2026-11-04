@@ -91,3 +91,15 @@ def test_rows_eq_and_element_id(graph, a):
     assert len(a.rows(graph.drug, limit=1, offset=1).rows) == 1
     rel = a.rows("BINDS")
     assert rel.columns[:3] == ["_element_id", "_from_id", "_to_id"]
+
+
+# P2: order_by and q
+
+def test_rows_order_by_and_q(graph, a):
+    names = [r[r_i] for r in (x for x in a.rows(graph.drug, order_by="name", desc=True).rows)
+             for r_i in [a.rows(graph.drug).columns.index("name")]]
+    assert names == ["ibuprofen", "aspirin"]
+    assert len(a.rows(graph.drug, q="ibu").rows) == 1
+    assert a.rows(graph.drug, q="zzz").rows == []
+    # a list/map/datetime property must not break the substring search
+    assert len(a.rows(graph.drug, q="asp").rows) == 1

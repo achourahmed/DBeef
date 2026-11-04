@@ -7,11 +7,12 @@ from pathlib import Path
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    IntraLink, NotFound, QueryResult, QueryTimeout, StoreUnavailable,
-                   WriteBlocked, clamp_limit, not_yet, to_json_safe)
+                   WriteBlocked, clamp_limit, to_json_safe)
 
 _ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ,
                     sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE}
 _ALLOWED_PRAGMAS = {"table_info", "table_xinfo", "foreign_key_list", "index_list", "query_only"}
+COUNT_BUDGET_S = 1.0  # a filtered COUNT(*) gets this long, else total stays unknown
 
 
 def _authorize(action, arg1, arg2, db_name, trigger):
@@ -51,11 +52,12 @@ class SqliteAdapter(Adapter):
             self._conn = conn
         return self._conn
 
-    def _run(self, sql: str, params: tuple = (), limit: int | None = None) -> QueryResult:
+    def _run(self, sql: str, params: tuple = (), limit: int | None = None,
+             deadline_s: float = QUERY_TIMEOUT_S) -> QueryResult:
         limit = clamp_limit(limit)
         with self._lock:
             conn = self._connect()
-            self._deadline = time.monotonic() + QUERY_TIMEOUT_S
+            self._deadline = time.monotonic() + deadline_s
             try:
                 cur = conn.execute(sql, params)
                 rows = cur.fetchmany(limit + 1)
@@ -107,22 +109,38 @@ class SqliteAdapter(Adapter):
         # foreign_key_list columns: id, seq, table, from, to, on_update, on_delete, match
         links = [IntraLink(from_collection=name, from_field=fk[3], to_collection=fk[2],
                            to_field=fk[4], label=f"FK {fk[3]}") for fk in fks]
-        return Description(collection=coll, fields=[Field(name=c[1], type=c[2] or "") for c in cols],
-                           links=links)
+        # table_info columns: cid, name, type, notnull, dflt_value, pk
+        return Description(collection=coll, links=links,
+                           fields=[Field(name=c[1], type=c[2] or "", pk=bool(c[5]), nullable=not (c[3] or c[5]))
+                                   for c in cols])
 
     def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
-        not_yet(order_by, q)
         self._known(collection)
         n = clamp_limit(limit)
-        sql, params = f"SELECT * FROM {_quote(collection)}", []
+        cols = [c[1] for c in self._run(f"PRAGMA table_info({_quote(collection)})").rows]
+        for name in (eq[0] if eq else None, order_by):
+            if name is not None and name not in cols:
+                raise BadQuery(f"no field {name!r} in {collection!r}")
+        where, params = [], []
         if eq:
-            field, value = eq
-            if field not in {c[1] for c in self._run(f"PRAGMA table_info({_quote(collection)})").rows}:
-                raise BadQuery(f"no field {field!r} in {collection!r}")
             # Column affinity makes '5' match an INTEGER 5, so one parameterised '=' is enough.
-            sql, params = sql + f" WHERE {_quote(field)} = ?", [value]
-        r = self._run(sql + " LIMIT ? OFFSET ?", (*params, n + 1, offset), limit=n)
+            where.append(f"{_quote(eq[0])} = ?")
+            params.append(eq[1])
+        if q is not None:
+            esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where.append("(" + " OR ".join(f"CAST({_quote(c)} AS TEXT) LIKE ? ESCAPE '\\'" for c in cols) + ")")
+            params += [f"%{esc}%"] * len(cols)
+        tail = f" WHERE {' AND '.join(where)}" if where else ""
+        order = f" ORDER BY {_quote(order_by)}{' DESC' if desc else ''}" if order_by else ""
+        r = self._run(f"SELECT * FROM {_quote(collection)}{tail}{order} LIMIT ? OFFSET ?",
+                      (*params, n + 1, offset), limit=n)
         r.offset = offset
+        if where:  # a filtered count is usually cheap; an unfiltered one scans the whole table
+            try:
+                r.total = self._run(f"SELECT COUNT(*) FROM {_quote(collection)}{tail}", tuple(params),
+                                    deadline_s=COUNT_BUDGET_S).rows[0][0]
+            except QueryTimeout:
+                pass
         return r
 
     def query(self, text: str, limit: int | None = None) -> QueryResult:

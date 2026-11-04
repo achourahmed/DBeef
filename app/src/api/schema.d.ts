@@ -220,6 +220,13 @@ export interface components {
             name: string;
             /** Type */
             type: string;
+            /**
+             * Pk
+             * @default false
+             */
+            pk: boolean;
+            /** Nullable */
+            nullable?: boolean | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -663,6 +670,9 @@ export interface operations {
             query?: {
                 limit?: number | null;
                 offset?: number;
+                order_by?: string | null;
+                desc?: boolean;
+                q?: string | null;
                 eq_field?: string | null;
                 eq_value?: string | null;
             };

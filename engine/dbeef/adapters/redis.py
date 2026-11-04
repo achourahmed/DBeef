@@ -9,7 +9,7 @@ import redis
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    NotFound, QueryResult, QueryTimeout, StoreUnavailable, WriteBlocked,
-                   clamp_limit, not_yet, to_json_safe)
+                   clamp_limit, to_json_safe)
 
 SCAN_CAP = 10_000
 _DESCRIBE_SAMPLE = 20
@@ -116,19 +116,32 @@ class RedisAdapter(Adapter):
         return None
 
     def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
-        not_yet(order_by, q)
+        if order_by not in (None, "key", "ttl"):
+            raise BadQuery("Redis keys can only be ordered by 'key' or 'ttl'")
         self._known(collection)
         n = clamp_limit(limit)
         if eq and eq[0] == "$key":
             key = collection.replace("*", eq[1])
             keys = [key] if self._call(self._r.exists, key) else []
         else:
-            keys = self._keys_of(collection, SCAN_CAP if eq else offset + n + 1)
+            whole = eq or q is not None or order_by  # anything but plain paging needs every key of the pattern
+            keys = self._keys_of(collection, SCAN_CAP if whole else offset + n + 1)
             if eq:  # a hash field: filter the whole (capped) pattern, since Redis cannot
                 field, value = eq
                 keys = [k for k in keys if (v := self._call(self._r.hget, k, field)) is not None
                         and v.decode("utf-8", "replace") == value]
-            keys = keys[offset:]
+        if q is not None:
+            keys = [k for k in keys if q in k]
+        if order_by == "key":
+            keys.sort(reverse=desc)
+        elif order_by == "ttl":
+            with self._errors():
+                pipe = self._r.pipeline()
+                for k in keys:
+                    pipe.ttl(k)
+                ttls = dict(zip(keys, pipe.execute()))
+            keys.sort(key=ttls.__getitem__, reverse=desc)
+        keys = keys[offset:]
         rows = []
         for k in keys[:n]:
             kind = self._call(self._r.type, k).decode()

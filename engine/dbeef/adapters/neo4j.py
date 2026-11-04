@@ -9,7 +9,7 @@ from neo4j.graph import Node, Path, Relationship
 
 from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, Field,
                    IntraLink, NotFound, QueryResult, QueryTimeout, StoreUnavailable,
-                   WriteBlocked, clamp_limit, not_yet, to_json_safe)
+                   WriteBlocked, clamp_limit, to_json_safe)
 
 _DESCRIBE_SAMPLE = 100
 # Neo4j reports these as plain reads ('r'), but they change server state:
@@ -100,13 +100,24 @@ class Neo4jAdapter(Adapter):
             return Collection(name=name, kind="rel_type", count=None)
         raise NotFound(f"no label or relationship type {name!r}")
 
-    def _items(self, coll: Collection, limit: int, offset: int = 0, eq: tuple[str, str] | None = None) -> list:
-        q = _quote(coll.name)
-        match = f"MATCH (n:{q})" if coll.kind == "label" else f"MATCH ()-[n:{q}]->()"
+    def _items(self, coll: Collection, limit: int, offset: int = 0, eq: tuple[str, str] | None = None,
+               q: str | None = None, order_by: str | None = None, desc: bool = False) -> list:
+        label = _quote(coll.name)
+        match = f"MATCH (n:{label})" if coll.kind == "label" else f"MATCH ()-[n:{label}]->()"
         # n[$f] is null for a property the item lacks, so an unknown field simply matches nothing.
-        where = " WHERE n[$f] = $v" if eq else ""
-        params = {"lim": limit, "off": offset, **({"f": eq[0], "v": eq[1]} if eq else {})}
-        return [r[0] for r in self._read(f"{match}{where} RETURN n SKIP $off LIMIT $lim", params, limit=limit)[1]]
+        conds, params = [], {"lim": limit, "off": offset}
+        if eq:
+            conds.append("n[$f] = $v")
+            params |= {"f": eq[0], "v": eq[1]}
+        if q is not None:  # only string properties: toString() on a list or map would raise
+            conds.append("any(k IN keys(n) WHERE n[k] IS :: STRING AND n[k] CONTAINS $q)")
+            params["q"] = q
+        where = f" WHERE {' AND '.join(conds)}" if conds else ""
+        order = f" ORDER BY n[$ob]{' DESC' if desc else ''}" if order_by else ""
+        if order_by:
+            params["ob"] = order_by
+        cypher = f"{match}{where} RETURN n{order} SKIP $off LIMIT $lim"
+        return [r[0] for r in self._read(cypher, params, limit=limit)[1]]
 
     def describe(self, name: str) -> Description:
         coll = self._known(name)
@@ -125,10 +136,9 @@ class Neo4jAdapter(Adapter):
                            links=links)
 
     def rows(self, collection, limit=None, offset=0, order_by=None, desc=False, eq=None, q=None) -> QueryResult:
-        not_yet(order_by, q)
         coll = self._known(collection)
         n = clamp_limit(limit)
-        items = self._items(coll, n + 1, offset, eq)
+        items = self._items(coll, n + 1, offset, eq, q, order_by, desc)
         keys = sorted({k for item in items for k in dict(item)})
         extra = ["_from_id", "_to_id"] if coll.kind == "rel_type" else []
         rows = []

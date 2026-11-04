@@ -110,12 +110,12 @@ def create_app(projects: dict[str, Project], token: str, allow_origins: list[str
 
     # Declared before the describe route: {c:path} would otherwise swallow "/rows".
     @app.get("/api/projects/{p}/stores/{s}/collections/{c:path}/rows", response_model=QueryResult)
-    def rows(p: str, s: str, c: str, limit: int | None = None, offset: int = 0,
-             eq_field: str | None = None, eq_value: str | None = None):
+    def rows(p: str, s: str, c: str, limit: int | None = None, offset: int = 0, order_by: str | None = None,
+             desc: bool = False, q: str | None = None, eq_field: str | None = None, eq_value: str | None = None):
         if (eq_field is None) != (eq_value is None):
             raise BadQuery("eq_field and eq_value go together")
         eq = (eq_field, eq_value) if eq_field is not None else None
-        return project(p).adapter(s).rows(c, limit, offset=offset, eq=eq)
+        return project(p).adapter(s).rows(c, limit, offset=offset, order_by=order_by, desc=desc, eq=eq, q=q)
 
     @app.get("/api/projects/{p}/stores/{s}/collections/{c:path}", response_model=Description)
     def describe(p: str, s: str, c: str):

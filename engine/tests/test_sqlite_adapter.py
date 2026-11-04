@@ -130,7 +130,7 @@ def test_user_table_named_like_internal_is_listed(sample_db):
 def test_rows_eq_and_offset(sample_db):
     a = SqliteAdapter(sample_db)
     hit = a.rows("runs", eq=("inchikey", "BBB"))
-    assert [r[0] for r in hit.rows] == ["r2"] and hit.offset == 0 and hit.total is None
+    assert [r[0] for r in hit.rows] == ["r2"] and hit.offset == 0 and hit.total == 1
     assert a.rows("runs", eq=("inchikey", "nope")).rows == []
     assert a.rows("runs", eq=("inchikey", "x' OR '1'='1")).rows == []
     page = a.rows("runs", limit=2, offset=2)
@@ -138,5 +138,36 @@ def test_rows_eq_and_offset(sample_db):
     assert a.rows("runs", offset=99).rows == []
     with pytest.raises(BadQuery):
         a.rows("runs", eq=("ghost", "1"))
+
+
+# P2: order_by, q, total
+
+def test_rows_order_by_and_q(sample_db):
+    a = SqliteAdapter(sample_db)
+    assert [r[0] for r in a.rows("runs", order_by="run_id", desc=True).rows] == ["r3", "r2", "r1"]
+    assert [r[0] for r in a.rows("runs", order_by="score").rows][0] == "r2"  # NaN sorts first, as SQLite does
     with pytest.raises(BadQuery):
-        a.rows("runs", order_by="run_id")
+        a.rows("runs", order_by="ghost")
+    q = a.rows("runs", q="BB")
+    assert [r[0] for r in q.rows] == ["r2"] and q.total == 1
+    assert a.rows("runs", q="r").total == 3            # matches run_id in every row
+    assert a.rows("runs", q="%").rows == []            # LIKE wildcards are escaped
+    assert a.rows("runs", q="_").rows == []
+    assert a.rows("runs").total is None                # unfiltered: no count
+
+
+def test_total_is_null_when_counting_is_slow(sample_db, monkeypatch):
+    import dbeef.adapters.sqlite as mod
+    conn = sqlite3.connect(sample_db)  # enough rows for the progress handler to fire during COUNT(*)
+    conn.executemany("INSERT INTO runs VALUES (?, 'ZZZ', 0, NULL)", ((f"big{i}",) for i in range(50_000)))
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(mod, "COUNT_BUDGET_S", 0.0)
+    r = SqliteAdapter(sample_db).rows("runs", q="ZZZ", limit=5)
+    assert len(r.rows) == 5 and r.total is None
+
+
+def test_describe_marks_primary_key(sample_db):
+    f = {x.name: x for x in SqliteAdapter(sample_db).describe("runs").fields}
+    assert f["run_id"].pk is True and f["inchikey"].pk is False
+    assert f["run_id"].nullable is False and f["inchikey"].nullable is True

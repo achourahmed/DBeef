@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import redis
 
-from dbeef.adapters.base import NotFound, StoreUnavailable, WriteBlocked
+from dbeef.adapters.base import BadQuery, NotFound, StoreUnavailable, WriteBlocked
 from dbeef.adapters.redis import RedisAdapter, key_pattern
 
 URL = os.environ.get("REDIS_TEST_URL", "redis://localhost:6379/15")
@@ -130,3 +130,14 @@ def test_rows_key_column_and_eq(keys, a):
     assert len(by_field.rows) == 2
     assert a.rows(f"{keys.prefix}:job:*", eq=("status", "nope")).rows == []
     assert len(a.rows(f"{keys.prefix}:job:*", limit=1, offset=1).rows) == 1
+
+
+# P2: order_by and q
+
+@needs_redis
+def test_rows_order_by_and_q(keys, a):
+    pat = f"{keys.prefix}:job:*"
+    assert [r[0] for r in a.rows(pat, order_by="key", desc=True).rows] == ["4d5e6f", "1a2b3c"]
+    assert [r[0] for r in a.rows(pat, q="4d5e").rows] == ["4d5e6f"]
+    with pytest.raises(BadQuery):
+        a.rows(pat, order_by="value")

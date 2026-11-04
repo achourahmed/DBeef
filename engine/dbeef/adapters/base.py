@@ -73,6 +73,8 @@ class QueryTimeout(DBeefError):
 class Field(BaseModel):
     name: str
     type: str
+    pk: bool = False
+    nullable: bool | None = None  # None when the store cannot say
 
 
 class Collection(BaseModel):
@@ -119,11 +121,6 @@ class Adapter(ABC):
              desc: bool = False, eq: tuple[str, str] | None = None, q: str | None = None) -> QueryResult:
         """Items of one collection. `eq=(field, value)` keeps exact matches only."""
 
-
-def not_yet(order_by: str | None, q: str | None) -> None:
-    # shortcut: sorting and substring search arrive in roadmap P2; until then say so instead of ignoring them.
-    if order_by is not None or q is not None:
-        raise BadQuery("order_by and q are not supported yet")
 
     @abstractmethod
     def query(self, text: str, limit: int | None = None) -> QueryResult: ...
