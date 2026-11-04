@@ -59,15 +59,16 @@ class ProjectConfig(Strict):
     project: str = Field(pattern=r"^[a-z0-9_-]+$")
     stores: dict[Annotated[str, Field(pattern=_NAME)], StoreConfig] = Field(min_length=1)
     links: list[LinkConfig] = []
-    origins: dict = {}
+    origins: dict[str, StoreRef] = {}  # identifier name -> where it is first created
     dag: dict = {}
 
     @model_validator(mode="after")
-    def _links_name_known_stores(self):
-        for i, link in enumerate(self.links):
-            for end in (link.from_, link.to):
-                if end.store not in self.stores:
-                    raise ValueError(f"link #{i}: unknown store '{end.store}'")
+    def _ends_name_known_stores(self):
+        ends = [(f"link #{i}", end) for i, link in enumerate(self.links) for end in (link.from_, link.to)]
+        ends += [(f"origin {name!r}", ref) for name, ref in self.origins.items()]
+        for what, end in ends:
+            if end.store not in self.stores:
+                raise ValueError(f"{what}: unknown store '{end.store}'")
         return self
 
 

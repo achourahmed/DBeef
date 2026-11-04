@@ -13,7 +13,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .adapters.base import BadQuery, Collection, DBeefError, Description, NotFound, QueryResult
 from .project import Project, StoreStatus
+from .linkcheck import LinkCheck, LinkInfo, check_link, list_links
 from .schema_map import SchemaMap, build_schema_map
+from .trace import TraceResult, trace
 
 TOKEN_HEADER = "X-DBeef-Token"
 _STATUS = {"write_blocked": 403, "store_unavailable": 503, "not_found": 404,
@@ -38,6 +40,12 @@ class ProjectInfo(BaseModel):
 
 class QueryBody(BaseModel):
     text: str
+    limit: int | None = None
+
+
+class TraceBody(BaseModel):
+    value: str
+    field: str | None = None
     limit: int | None = None
 
 
@@ -120,6 +128,18 @@ def create_app(projects: dict[str, Project], token: str, allow_origins: list[str
     @app.get("/api/projects/{p}/schema-map", response_model=SchemaMap)
     def schema_map(p: str):
         return build_schema_map(project(p))
+
+    @app.post("/api/projects/{p}/trace", response_model=TraceResult)
+    def trace_value(p: str, body: TraceBody):
+        return trace(project(p), body.value, body.field, body.limit)
+
+    @app.get("/api/projects/{p}/links", response_model=list[LinkInfo])
+    def links(p: str):
+        return list_links(project(p))
+
+    @app.get("/api/projects/{p}/links/{i}/check", response_model=LinkCheck)
+    def link_check(p: str, i: int, sample: int = 200):
+        return check_link(project(p), i, sample)
 
     def openapi():
         # Validation errors return 400 with ErrorBody (see bad_request), not FastAPI's 422.

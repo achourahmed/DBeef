@@ -67,3 +67,33 @@ def test_openapi_documents_error_body(client):
     op = client.get("/openapi.json").json()["paths"]["/api/projects/{p}/stores/{s}/query"]["post"]
     assert "422" not in op["responses"]
     assert "ErrorBody" in op["responses"]["403"]["content"]["application/json"]["schema"]["$ref"]
+
+
+# P1: trace, links, rows filters
+
+def test_rows_eq_and_offset_params(client):
+    base = "/api/projects/demo/stores/runs/collections/runs/rows"
+    r = client.get(f"{base}?eq_field=run_id&eq_value=r2", headers=H).json()
+    assert [row[0] for row in r["rows"]] == ["r2"]
+    assert client.get(f"{base}?offset=1&limit=1", headers=H).json()["offset"] == 1
+    half = client.get(f"{base}?eq_field=run_id", headers=H)
+    assert half.status_code == 400 and half.json()["error"]["code"] == "bad_query"
+
+
+def test_trace_route(client):
+    r = client.post("/api/projects/demo/trace", headers=H, json={"value": "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"})
+    assert r.status_code == 200
+    body = r.json()
+    assert {(h["store"], h["collection"]) for h in body["hits"]} == {("runs", "runs"), ("roster", "roster")}
+    assert [e["name"] for e in body["errors"]] == ["jobs"]
+    assert client.post("/api/projects/demo/trace", headers=H, json={}).status_code == 400
+
+
+def test_links_routes(client):
+    links = client.get("/api/projects/demo/links", headers=H).json()
+    assert links[0]["index"] == 0 and links[0]["from"]["store"] == "runs"
+    c = client.get("/api/projects/demo/links/0/check?sample=10", headers=H).json()
+    assert (c["sampled"], c["missing"]) == (2, 1)
+    assert client.get("/api/projects/demo/links/7/check", headers=H).status_code == 404
+    down = client.get("/api/projects/demo/links/2/check", headers=H)
+    assert down.status_code == 503 and down.json()["error"]["code"] == "store_unavailable"

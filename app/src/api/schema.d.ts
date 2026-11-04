@@ -123,6 +123,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{p}/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trace Value */
+        post: operations["trace_value_api_projects__p__trace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{p}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Links */
+        get: operations["links_api_projects__p__links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{p}/links/{i}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Link Check */
+        get: operations["link_check_api_projects__p__links__i__check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -188,6 +239,24 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** LinkCheck */
+        LinkCheck: {
+            /** Index */
+            index: number;
+            /** Sampled */
+            sampled: number;
+            /** Missing */
+            missing: number;
+            /** Examples */
+            examples: string[];
+        };
+        /** LinkInfo */
+        LinkInfo: {
+            /** Index */
+            index: number;
+            from: components["schemas"]["StoreRef"];
+            to: components["schemas"]["StoreRef"];
+        };
         /** MapEdge */
         MapEdge: {
             /** From */
@@ -243,6 +312,13 @@ export interface components {
             rows: unknown[][];
             /** Truncated */
             truncated: boolean;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /** Total */
+            total?: number | null;
         };
         /** SchemaMap */
         SchemaMap: {
@@ -252,6 +328,15 @@ export interface components {
             edges: components["schemas"]["MapEdge"][];
             /** Errors */
             errors: components["schemas"]["StoreStatus"][];
+        };
+        /** StoreRef */
+        StoreRef: {
+            /** Store */
+            store: string;
+            /** Collection */
+            collection: string;
+            /** Field */
+            field: string;
         };
         /** StoreStatus */
         StoreStatus: {
@@ -266,6 +351,36 @@ export interface components {
             status: "ok" | "error";
             /** Message */
             message?: string | null;
+        };
+        /** TraceBody */
+        TraceBody: {
+            /** Value */
+            value: string;
+            /** Field */
+            field?: string | null;
+            /** Limit */
+            limit?: number | null;
+        };
+        /** TraceHit */
+        TraceHit: {
+            /** Store */
+            store: string;
+            /** Collection */
+            collection: string;
+            /** Field */
+            field: string;
+            rows: components["schemas"]["QueryResult"];
+            /** Is Origin */
+            is_origin: boolean;
+        };
+        /** TraceResult */
+        TraceResult: {
+            /** Value */
+            value: string;
+            /** Hits */
+            hits: components["schemas"]["TraceHit"][];
+            /** Errors */
+            errors: components["schemas"]["StoreStatus"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -547,6 +662,9 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number | null;
+                offset?: number;
+                eq_field?: string | null;
+                eq_value?: string | null;
             };
             header?: never;
             path: {
@@ -827,6 +945,268 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaMap"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    trace_value_api_projects__p__trace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                p: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TraceBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    links_api_projects__p__links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                p: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkInfo"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    link_check_api_projects__p__links__i__check_get: {
+        parameters: {
+            query?: {
+                sample?: number;
+            };
+            header?: never;
+            path: {
+                p: string;
+                i: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCheck"];
                 };
             };
             /** @description Bad Request */
