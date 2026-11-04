@@ -3,12 +3,14 @@ import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { TableSkeleton } from './Skeletons'
 import { api } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { ErrorNote } from './ErrorNote'
 import { ExportMenu } from './ExportMenu'
 import { Pager } from './Pager'
 import { ResultTable, type Sort } from './ResultTable'
+import { RowInspector } from './RowInspector'
 import type { Selection } from './Sidebar'
 
 const DEBOUNCE_MS = 300
@@ -33,6 +35,7 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
   const [offset, setOffset] = useState(0)
   const [sort, setSort] = useState<Sort | null>(null)
   const [filter, setFilter] = useState('')
+  const [picked, setPicked] = useState<number | null>(null)
   const q = useDebounced(filter.trim()) || null
   const key = `${store}/${collection}`
   const [seenKey, setSeenKey] = useState(key)
@@ -41,6 +44,7 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
     setOffset(0)
     setSort(null)
     setFilter('')
+    setPicked(null)
   }
 
   const desc = useLoad(selection ? () => api.describe(project, store, collection) : null, [project, store, collection])
@@ -51,12 +55,15 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
 
   function toggleSort(column: string) {
     setOffset(0)
+    setPicked(null)
     setSort((s) => (s?.column === column ? (s.desc ? null : { column, desc: true }) : { column, desc: false }))
   }
 
-  if (!selection) return <p className="text-muted-foreground p-6 text-sm">Pick a collection in the sidebar.</p>
+  if (!selection) return null
+  const row = picked !== null ? rows.data?.rows[picked] : undefined
   return (
-    <div className="space-y-5 p-6">
+    <div className="flex h-full min-h-0 gap-4 p-6">
+    <div className="min-w-0 flex-1 space-y-5 overflow-auto">
       <div>
         <p className="text-muted-foreground text-xs">{store}</p>
         <h2 className="font-mono text-lg font-semibold">{collection}</h2>
@@ -91,7 +98,7 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
           className="h-8 w-56"
           placeholder="filter rows (substring)"
           value={filter}
-          onChange={(e) => { setFilter(e.target.value); setOffset(0) }}
+          onChange={(e) => { setFilter(e.target.value); setOffset(0); setPicked(null) }}
         />
         {eq && (
           <Badge variant="outline" className="gap-1 font-mono">
@@ -113,13 +120,18 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
         {rows.data && <div className="ml-auto"><ExportMenu result={rows.data} name={`${store}-${collection}`} /></div>}
       </div>
       {rows.error && <ErrorNote error={rows.error} />}
-      {rows.loading && !rows.data && <p className="text-muted-foreground text-sm">loading…</p>}
+      {rows.loading && !rows.data && <TableSkeleton />}
       {rows.data && (
         <>
-          <ResultTable result={rows.data} onTrace={onTrace} sort={sort} onSort={toggleSort} footer={false} />
-          <Pager result={rows.data} pageSize={pageSize} onOffset={setOffset}
-            onPageSize={(s) => { setPageSize(s); setOffset(0) }} />
+          <ResultTable result={rows.data} onTrace={onTrace} sort={sort} onSort={toggleSort} footer={false}
+            selectedRow={picked} onSelectRow={(i) => setPicked(i === picked ? null : i)} />
+          <Pager result={rows.data} pageSize={pageSize} onOffset={(o) => { setOffset(o); setPicked(null) }}
+            onPageSize={(s) => { setPageSize(s); setOffset(0); setPicked(null) }} />
         </>
+      )}
+    </div>
+      {row && rows.data && (
+        <RowInspector columns={rows.data.columns} row={row} onTrace={onTrace} onClose={() => setPicked(null)} />
       )}
     </div>
   )

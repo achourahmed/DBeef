@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { api, type StoreStatus } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { cn } from '@/lib/utils'
+import { ListSkeleton } from './Skeletons'
 
 export type Selection = { store: string; collection: string; eq?: [string, string] | null }
 
@@ -27,21 +28,21 @@ function StoreItem({ project, store, selected, onSelect, filter }: {
   return (
     <li>
       <button
-        className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium"
+        className="hover:bg-sidebar-accent/60 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium"
         onClick={() => setOpen(!open)}
         title={store.message ?? undefined}
       >
         <Chevron className="text-muted-foreground size-3.5 shrink-0" />
-        <span className={cn('size-2 shrink-0 rounded-full', ok ? 'bg-emerald-500' : 'bg-red-500')} />
+        <span className={cn('size-2 shrink-0 rounded-full', ok ? 'bg-ok' : 'bg-brand')} />
         <span className="truncate">{store.name}</span>
         <span className="text-muted-foreground ml-auto text-xs">{store.type}</span>
       </button>
       {open && !ok && (
-        <p className="text-destructive ml-8 line-clamp-2 px-2 pb-1 text-xs break-all" title={store.message ?? undefined}>
-          {store.message}
+        <p className="text-muted-foreground ml-8 px-2 pb-1 text-xs" title={store.message ?? undefined}>
+          Can't reach this store
         </p>
       )}
-      {open && colls.loading && <p className="text-muted-foreground ml-8 px-2 text-xs">loading…</p>}
+      {open && colls.loading && <ListSkeleton />}
       {open && colls.error && <p className="text-destructive ml-8 px-2 text-xs">{colls.error.message}</p>}
       {open && colls.data && (
         <ul className="ml-6">
@@ -51,8 +52,8 @@ function StoreItem({ project, store, selected, onSelect, filter }: {
               <li key={c.name}>
                 <button
                   className={cn(
-                    'hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1 text-left font-mono text-xs',
-                    active && 'bg-muted font-semibold',
+                    'hover:bg-sidebar-accent/60 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left font-mono text-xs',
+                    active && 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold',
                   )}
                   onClick={() => onSelect({ store: store.name, collection: c.name })}
                 >
@@ -92,7 +93,7 @@ export function Sidebar({ project, selected, onSelect }: {
   return (
     <ScrollArea className="h-full">
       <div className="p-2">
-        <Input ref={box} className="mb-2 h-7 text-xs" placeholder="filter stores and collections  ( / )"
+        <Input ref={box} className="bg-background mb-2 h-7 text-xs" placeholder="filter stores and collections  ( / )"
           value={filter} onChange={(e) => setFilter(e.target.value)} />
         <p className="text-muted-foreground px-2 pt-1 pb-2 text-xs font-medium tracking-wide uppercase">Stores</p>
         {stores.error && <p className="text-destructive px-2 text-xs">{stores.error.message}</p>}

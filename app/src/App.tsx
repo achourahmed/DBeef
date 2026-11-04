@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ENGINE_URL } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
@@ -6,15 +6,22 @@ import { cn } from '@/lib/utils'
 import { CollectionView } from '@/components/CollectionView'
 import { CommandPalette, TABS } from '@/components/CommandPalette'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
+import { ThemeMenu } from '@/components/ThemeMenu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useTheme } from '@/lib/theme'
+
+// React Flow + elkjs are most of the bundle: load them only when the map is shown.
+const SchemaMapView = lazy(() => import('@/components/SchemaMapView').then((m) => ({ default: m.SchemaMapView })))
+import { EngineDown, PickCollection } from '@/components/EmptyStates'
 import { ErrorNote } from '@/components/ErrorNote'
 import { QueryPanel } from '@/components/QueryPanel'
-import { SchemaMapView } from '@/components/SchemaMapView'
 import { Sidebar, type Selection } from '@/components/Sidebar'
 import { TraceBar, type TraceQuery } from '@/components/TraceBar'
 import { TraceView } from '@/components/TraceView'
 
 export default function App() {
   const projects = useLoad(() => api.projects(), [])
+  const theme = useTheme()
   const [picked, setPicked] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [queryStore, setQueryStore] = useState<string | null>(null)
@@ -50,22 +57,20 @@ export default function App() {
 
   return (
     <div className="bg-background text-foreground flex h-screen flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-        <img src="/dbeef-logo.svg" alt="" className="h-8 w-auto" />
-        <span className="font-semibold">DBeef</span>
+      <header className="bg-card flex h-12 shrink-0 items-center gap-3 border-b px-4">
+        <img src="/dbeef-logo.svg" alt="" className="h-7 w-auto" />
+        <span className="font-semibold tracking-tight">DBeef</span>
         {projects.data && projects.data.length > 1 ? (
-          <select
-            className="border-input bg-background h-7 rounded-md border px-2 text-sm"
-            value={project ?? ''}
-            onChange={(e) => {
-              setPicked(e.target.value)
-              setSelection(null)
-            }}
-          >
-            {projects.data.map((p) => <option key={p.name}>{p.name}</option>)}
-          </select>
+          <Select value={project ?? ''} onValueChange={(v) => { setPicked(v); setSelection(null) }}>
+            <SelectTrigger size="sm" className="bg-secondary h-7 rounded-full border-0 px-3 text-xs" aria-label="project">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.data.map((p) => <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         ) : (
-          project && <span className="text-muted-foreground text-sm">{project}</span>
+          project && <span className="bg-secondary rounded-full px-3 py-0.5 text-xs">{project}</span>
         )}
         {project && (
           <div className="ml-auto">
@@ -73,7 +78,8 @@ export default function App() {
               onTrace={(q) => { setTraceQuery(q); setTab('trace') }} />
           </div>
         )}
-        <span className={cn('text-muted-foreground font-mono text-xs', !project && 'ml-auto')}>{ENGINE_URL}</span>
+        <span className={cn('text-muted-foreground hidden font-mono text-[11px] xl:inline', !project && 'ml-auto')}>{ENGINE_URL}</span>
+        <ThemeMenu prefs={theme.prefs} onChange={theme.set} />
       </header>
       {project && (
         <CommandPalette project={project} open={palette} onOpenChange={setPalette}
@@ -81,10 +87,12 @@ export default function App() {
       )}
       <ShortcutsSheet open={help} onOpenChange={setHelp} />
 
-      {projects.error && <div className="p-6"><ErrorNote error={projects.error} /></div>}
+      {projects.error && (projects.error.code === 'engine_unreachable'
+        ? <EngineDown url={ENGINE_URL} onRetry={projects.reload} />
+        : <div className="p-6"><ErrorNote error={projects.error} /></div>)}
       {project && (
         <div className="flex min-h-0 flex-1">
-          <aside className="w-72 shrink-0 border-r">
+          <aside className="bg-sidebar text-sidebar-foreground w-64 shrink-0 border-r">
             <Sidebar key={project} project={project} selected={selection} onSelect={select} />
           </aside>
           <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 flex-1 flex-col gap-0">
@@ -98,10 +106,14 @@ export default function App() {
               </div>
             </div>
             <TabsContent value="map" className="min-h-0 flex-1">
-              <SchemaMapView project={project} onSelect={select} />
+              <Suspense fallback={<p className="text-muted-foreground p-6 text-sm">loading the map…</p>}>
+                <SchemaMapView project={project} onSelect={select} dark={theme.dark} />
+              </Suspense>
             </TabsContent>
-            <TabsContent value="data" className="min-h-0 flex-1 overflow-auto">
-              <CollectionView project={project} selection={selection} onSelect={select} onTrace={startTrace} />
+            <TabsContent value="data" className="min-h-0 flex-1 overflow-hidden">
+              {selection
+                ? <CollectionView project={project} selection={selection} onSelect={select} onTrace={startTrace} />
+                : <PickCollection onJump={() => setPalette(true)} onTab={setTab} />}
             </TabsContent>
             <TabsContent value="query" className="min-h-0 flex-1 overflow-auto">
               <QueryPanel project={project} store={queryStore} onStore={setQueryStore} onTrace={startTrace} />

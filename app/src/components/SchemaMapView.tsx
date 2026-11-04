@@ -17,10 +17,10 @@ const MAX_FIELDS = 8
 
 // One style per edge kind; the legend reads from the same table.
 const EDGE_STYLE: Record<MapEdge['kind'], { stroke: string; dash?: string; width: number; label: string }> = {
-  intra: { stroke: '#8a8a8a', width: 1.2, label: 'inside a store (foreign key, relationship)' },
-  cross: { stroke: '#F0444B', width: 2.2, label: 'cross-store link (from dbeef.yaml)' },
-  suggested: { stroke: '#6b8fd6', dash: '5 4', width: 1.4, label: 'suggested (shared field name)' },
-  broken: { stroke: '#d97706', dash: '2 3', width: 2, label: 'broken link (missing end)' },
+  intra: { stroke: 'var(--edge-intra)', width: 1.2, label: 'inside a store (foreign key, relationship)' },
+  cross: { stroke: 'var(--edge-cross)', width: 2.2, label: 'cross-store link (from dbeef.yaml)' },
+  suggested: { stroke: 'var(--edge-suggested)', dash: '5 4', width: 1.4, label: 'suggested (shared field name)' },
+  broken: { stroke: 'var(--edge-broken)', dash: '2 3', width: 2, label: 'broken link (missing end)' },
 }
 
 type NodeData = { node: MapNode | null; id: string }
@@ -121,14 +121,13 @@ function linkIndex(e: MapEdge, links: { index: number; from: { store: string; co
     && l.from.field === e.from_field && l.to.field === e.to_field)?.index
 }
 
-export function SchemaMapView({ project, onSelect }: { project: string; onSelect: (s: Selection) => void }) {
+export function SchemaMapView({ project, onSelect, dark }: { project: string; onSelect: (s: Selection) => void; dark: boolean }) {
   const map = useLoad(() => api.schemaMap(project), [project])
   const links = useLoad(() => api.links(project), [project])
   // Keeps the map it was laid out from, so a project switch never shows the old layout.
   const [flow, setFlow] = useState<{ src: SchemaMap; nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] } | null>(null)
   const [checks, setChecks] = useState<Record<string, CheckState>>({})
   const [open, setOpen] = useState<string | null>(null)
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches
 
   async function check(edgeId: string, e: MapEdge) {
     const i = linkIndex(e, links.data ?? [])
