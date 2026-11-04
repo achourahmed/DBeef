@@ -29,8 +29,9 @@ def _quote(name: str) -> str:
 
 
 class SqliteAdapter(Adapter):
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, immutable: bool = False):
         self.path = Path(path)
+        self.immutable = immutable
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.Lock()
         self._deadline = 0.0
@@ -40,8 +41,8 @@ class SqliteAdapter(Adapter):
             try:
                 # mode=ro never creates a missing file; as_uri() percent-encodes '#', '?' and '%'
                 # so they can't end the path early and silently drop mode=ro.
-                conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True,
-                                       check_same_thread=False)
+                uri = f"{self.path.resolve().as_uri()}?mode=ro" + ("&immutable=1" if self.immutable else "")
+                conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
                 conn.execute("PRAGMA query_only=ON")
             except sqlite3.Error as e:
                 raise StoreUnavailable(f"cannot open {self.path}: {e}") from e
@@ -74,7 +75,7 @@ class SqliteAdapter(Adapter):
 
     def _objects(self) -> list[list]:
         return self._run("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') "
-                         "AND name NOT LIKE 'sqlite_%' ORDER BY name", limit=10_000).rows
+                         "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name", limit=10_000).rows
 
     def _count(self, name: str, kind: str) -> int | None:
         # MAX(rowid) is O(log n) where COUNT(*) scans: fine for an estimate on multi-GB files.

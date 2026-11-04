@@ -102,3 +102,24 @@ def test_sample_and_describe_do_not_count(sample_db):
     a.sample("runs")
     a.describe("run_facts")
     assert not any("COUNT(" in s.upper() for s in seen)
+
+
+# P0: real-data fixes
+
+def test_immutable_uri_never_creates_wal_or_shm(sample_db):
+    conn = sqlite3.connect(sample_db)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.close()
+    a = SqliteAdapter(sample_db, immutable=True)
+    assert len(a.sample("runs").rows) == 3
+    assert not (sample_db.parent / "sample.db-shm").exists()
+    with pytest.raises(WriteBlocked):
+        a.query("DELETE FROM runs")
+
+
+def test_user_table_named_like_internal_is_listed(sample_db):
+    conn = sqlite3.connect(sample_db)
+    conn.execute("CREATE TABLE sqlite3_runs(x)")
+    conn.commit()
+    conn.close()
+    assert "sqlite3_runs" in {c.name for c in SqliteAdapter(sample_db).list_collections()}

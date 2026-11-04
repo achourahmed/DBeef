@@ -19,17 +19,18 @@ def clamp_limit(limit: int | None) -> int:
 
 
 def to_json_safe(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, str)):
+    if value is None or isinstance(value, (bool, int)):
         return value
+    if isinstance(value, str):
+        return value if len(value) <= _MAX_TEXT else f"{value[:_MAX_TEXT]}… (+{len(value) - _MAX_TEXT} chars)"
     if isinstance(value, float):
         return value if math.isfinite(value) else str(value)
     if isinstance(value, (bytes, bytearray, memoryview)):
         raw = bytes(value)
         try:
-            text = raw.decode("utf-8")
+            return to_json_safe(raw.decode("utf-8"))
         except UnicodeDecodeError:
             return f"<binary {len(raw)} bytes>"
-        return text if len(text) <= _MAX_TEXT else f"<binary {len(raw)} bytes>"
     if isinstance(value, dict):
         return {str(to_json_safe(k)): to_json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):

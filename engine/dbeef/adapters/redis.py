@@ -14,7 +14,6 @@ from .base import (QUERY_TIMEOUT_S, Adapter, BadQuery, Collection, Description, 
 SCAN_CAP = 10_000
 _DESCRIBE_SAMPLE = 20
 _PREVIEW = 10
-_MAX_TEXT = 1000
 
 READ_COMMANDS = frozenset("""
 GET MGET STRLEN GETRANGE HGET HGETALL HKEYS HVALS HLEN HMGET HEXISTS HSCAN LRANGE LLEN LINDEX
@@ -30,16 +29,6 @@ def key_pattern(key: str) -> str:
 def _glob(pattern: str) -> str:
     # shortcut: a literal '*' inside a key segment can't be told apart from a collapsed one.
     return ":".join(seg if seg == "*" else re.sub(r"([\[\]?\\])", r"\\\1", seg) for seg in pattern.split(":"))
-
-
-def _text(v):
-    # Long UTF-8 text is cut, not hidden; only undecodable bytes show as <binary>.
-    if isinstance(v, bytes):
-        try:
-            return v.decode("utf-8")[:_MAX_TEXT]
-        except UnicodeDecodeError:
-            pass
-    return to_json_safe(v)
 
 
 class RedisAdapter(Adapter):
@@ -86,9 +75,11 @@ class RedisAdapter(Adapter):
                 for p, n in sorted(counts.items())]
 
     def _known(self, pattern: str) -> Collection:
-        for c in self.list_collections():
-            if c.name == pattern:
-                return c
+        # Probe the glob and stop at the first key with this shape: no full keyspace scan.
+        with self._errors():
+            for k in self._r.scan_iter(match=_glob(pattern), count=1000):
+                if key_pattern(k.decode("utf-8", "replace")) == pattern:
+                    return Collection(name=pattern, kind="key_pattern", count=None)
         raise NotFound(f"no key pattern {pattern!r}")
 
     def describe(self, name: str) -> Description:
@@ -106,15 +97,15 @@ class RedisAdapter(Adapter):
     def _value(self, key: str, kind: str):
         r = self._r
         if kind == "string":
-            return _text(self._call(r.get, key))
+            return to_json_safe(self._call(r.get, key))
         if kind == "hash":
-            return {to_json_safe(f): _text(v) for f, v in self._call(r.hgetall, key).items()}
+            return {to_json_safe(f): to_json_safe(v) for f, v in self._call(r.hgetall, key).items()}
         if kind == "list":
-            return [_text(v) for v in self._call(r.lrange, key, 0, _PREVIEW - 1)]
+            return [to_json_safe(v) for v in self._call(r.lrange, key, 0, _PREVIEW - 1)]
         if kind == "set":
-            return [_text(v) for v in self._call(r.sscan, key, count=_PREVIEW)[1][:_PREVIEW]]
+            return [to_json_safe(v) for v in self._call(r.sscan, key, count=_PREVIEW)[1][:_PREVIEW]]
         if kind == "zset":
-            return [[_text(m), s] for m, s in self._call(r.zrange, key, 0, _PREVIEW - 1, withscores=True)]
+            return [[to_json_safe(m), s] for m, s in self._call(r.zrange, key, 0, _PREVIEW - 1, withscores=True)]
         if kind == "stream":
             return to_json_safe(self._call(r.xrange, key, count=_PREVIEW))
         return None
@@ -142,7 +133,7 @@ class RedisAdapter(Adapter):
             raise WriteBlocked(f"{cmd} is not a read command")
         result = self._call(self._r.execute_command, cmd, *parts[1:])
         items = result if isinstance(result, list) else [result]
-        return QueryResult(columns=["result"], rows=[[_text(v)] for v in items[:n]], truncated=len(items) > n)
+        return QueryResult(columns=["result"], rows=[[to_json_safe(v)] for v in items[:n]], truncated=len(items) > n)
 
     def close(self) -> None:
         self._r.close()

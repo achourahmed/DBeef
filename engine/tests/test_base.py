@@ -21,3 +21,11 @@ def test_to_json_safe():
 def test_error_codes():
     assert WriteBlocked("x").code == "write_blocked"
     assert QueryTimeout("x").code == "timeout"
+
+
+def test_long_text_is_cut():
+    out = to_json_safe("x" * 1500)
+    assert out.startswith("x" * 1000) and out.endswith("… (+500 chars)")
+    assert to_json_safe("x" * 1000) == "x" * 1000
+    assert to_json_safe(("y" * 1500).encode()).endswith("… (+500 chars)")
+    assert to_json_safe({"k": "z" * 1200})["k"].endswith("… (+200 chars)")

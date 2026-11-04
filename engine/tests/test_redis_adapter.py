@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import redis
 
-from dbeef.adapters.base import StoreUnavailable, WriteBlocked
+from dbeef.adapters.base import NotFound, StoreUnavailable, WriteBlocked
 from dbeef.adapters.redis import RedisAdapter, key_pattern
 
 URL = os.environ.get("REDIS_TEST_URL", "redis://localhost:6379/15")
@@ -64,7 +64,7 @@ def test_binary_and_big_values(keys, a):
     row = a.sample(f"{keys.prefix}:job:*").rows[0]
     assert row[3]["data"].startswith("<binary ")
     big = a.sample(f"{keys.prefix}:big").rows[0][3]
-    assert len(big) == 1000
+    assert big.startswith("x" * 1000) and big.endswith("(+4000 chars)")
 
 
 @needs_redis
@@ -95,3 +95,22 @@ def test_scan_errors_are_store_unavailable():
     with pytest.raises(StoreUnavailable):
         down.list_collections()
     down.close()
+
+
+def test_known_probes_the_pattern_instead_of_scanning_everything():
+    class FakeRedis:
+        calls = []
+
+        def scan_iter(self, match=None, count=None):
+            self.calls.append(match)
+            yield from [b"rq:job:x:deps", b"rq:job:1a2b"][: 2 if match else 10_000]
+
+        def close(self):
+            pass
+
+    a = RedisAdapter("redis://127.0.0.1:1")
+    a._r = FakeRedis()
+    assert a._known("rq:job:*").name == "rq:job:*"
+    assert FakeRedis.calls and all(m is not None for m in FakeRedis.calls)
+    with pytest.raises(NotFound):
+        a._known("rq:nothing:*")
