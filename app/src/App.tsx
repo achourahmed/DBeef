@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ENGINE_URL } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { cn } from '@/lib/utils'
 import { CollectionView } from '@/components/CollectionView'
+import { CommandPalette, TABS } from '@/components/CommandPalette'
+import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { ErrorNote } from '@/components/ErrorNote'
 import { QueryPanel } from '@/components/QueryPanel'
 import { SchemaMapView } from '@/components/SchemaMapView'
@@ -18,10 +20,26 @@ export default function App() {
   const [queryStore, setQueryStore] = useState<string | null>(null)
   const [tab, setTab] = useState('map')
   const [traceQuery, setTraceQuery] = useState<TraceQuery | null>(null)
+  const [palette, setPalette] = useState(false)
+  const [help, setHelp] = useState(false)
   const project = picked ?? projects.data?.[0]?.name ?? null
   // Field names the trace box offers: the ends of every configured link.
   const links = useLoad(project ? () => api.links(project) : null, [project])
   const startTrace = (value: string) => { setTraceQuery({ value, field: null }); setTab('trace') }
+
+  useEffect(() => {
+    // Global shortcuts: ⌘K palette, ⌘1–4 tabs, ? help, Esc closes. ⌘F and / live in TraceBar and Sidebar.
+    const onKey = (e: KeyboardEvent) => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setPalette((p) => !p) }
+      else if ((e.metaKey || e.ctrlKey) && TABS.some((t) => t.key === e.key)) {
+        e.preventDefault(); setTab(TABS.find((t) => t.key === e.key)!.value)
+      } else if ((e.key === '?' || (e.shiftKey && e.key === '/')) && !typing) setHelp(true)
+      else if (e.key === 'Escape') { setPalette(false); setHelp(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const traceFields = [...new Set((links.data ?? []).flatMap((l) => [l.from.field, l.to.field]))].sort()
 
   function select(s: Selection) {
@@ -57,6 +75,11 @@ export default function App() {
         )}
         <span className={cn('text-muted-foreground font-mono text-xs', !project && 'ml-auto')}>{ENGINE_URL}</span>
       </header>
+      {project && (
+        <CommandPalette project={project} open={palette} onOpenChange={setPalette}
+          onSelect={select} onTab={setTab} onTrace={startTrace} />
+      )}
+      <ShortcutsSheet open={help} onOpenChange={setHelp} />
 
       {projects.error && <div className="p-6"><ErrorNote error={projects.error} /></div>}
       {project && (
@@ -65,13 +88,14 @@ export default function App() {
             <Sidebar key={project} project={project} selected={selection} onSelect={select} />
           </aside>
           <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 flex-1 flex-col gap-0">
-            <div className="border-b px-4 py-2">
+            <div className="flex items-center border-b px-4 py-2">
               <TabsList>
-                <TabsTrigger value="map">Schema map</TabsTrigger>
-                <TabsTrigger value="data">Data</TabsTrigger>
-                <TabsTrigger value="query">Query</TabsTrigger>
-                <TabsTrigger value="trace">Trace</TabsTrigger>
+                {TABS.map((t) => <TabsTrigger key={t.value} value={t.value} title={`⌘${t.key}`}>{t.label}</TabsTrigger>)}
               </TabsList>
+              <div className="text-muted-foreground ml-auto flex gap-3 text-xs">
+                <button className="hover:text-foreground" onClick={() => setPalette(true)}>⌘K jump</button>
+                <button className="hover:text-foreground" onClick={() => setHelp(true)}>? shortcuts</button>
+              </div>
             </div>
             <TabsContent value="map" className="min-h-0 flex-1">
               <SchemaMapView project={project} onSelect={select} />
