@@ -8,7 +8,9 @@
     ],
     "module": "esnext",
     "types": [
-      "vite/client"
+      "vite/client",
+      "vitest/globals",
+      "@testing-library/jest-dom"
     ],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
