@@ -1,6 +1,6 @@
 # DBeef
 
-DBeef is an open-source desktop database visualizer. It shows graph, SQL and key-value stores side by side, along with how their data connects. The links between stores, and the names that matter in each project, come from a small `dbeef.yaml` per project. DBeef is read-only by default, and every adapter enforces that itself.
+DBeef is an open-source desktop database visualizer. It shows graph, SQL and key-value stores side by side, along with how their data connects: a schema map across stores, a trace that finds one value (an identifier, a job id) in every store at once, and a check that tells you whether a configured link actually holds in the data. The links between stores, and the names that matter in each project, come from a small `dbeef.yaml` per project. DBeef is read-only by default, and every adapter enforces that itself.
 
 Status: phase 1 (the engine). The design is in [docs/superpowers/specs/2026-10-28-dbeef-design.md](docs/superpowers/specs/2026-10-28-dbeef-design.md).
 
@@ -88,5 +88,6 @@ One `dbeef.yaml` per project. The format is in spec §4.2, and [engine/examples/
 - Secrets are referenced as `${ENV_VAR}`.
 - Relative SQLite paths resolve against the config file's folder.
 - Cross-store links name both ends as `{store, collection, field}`. Use `field: $key` for the variable part of a Redis key.
+- `origins:` maps an identifier name to the `{store, collection, field}` where it is first created; the trace view marks that store as the origin.
 - Unknown keys are rejected at load time, so a typo such as `pasword:` cannot pass silently.
 - `~` is expanded in SQLite paths.
