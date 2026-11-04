@@ -1,0 +1,51 @@
+name: ci
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python }}", cache: pip, cache-dependency-path: engine/requirements-dev.txt}
+      - run: pip install -r engine/requirements-dev.txt
+      - run: pytest
+        working-directory: engine
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json}
+      - run: npm ci
+        working-directory: app
+      - run: npm run lint
+        working-directory: app
+      - run: npm run build
+        working-directory: app
+
+  api-types:
+    # The UI's types come from the engine's /openapi.json; a contract change must regenerate them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: pip install -r engine/requirements.txt
+      - run: |
+          python examples/make_sample.py
+          python -m dbeef --config examples/dbeef.example.yaml --port 8765 --dev-token ci &
+          for i in $(seq 1 20); do curl -sf localhost:8765/openapi.json >/dev/null && break; sleep 1; done
+        working-directory: engine
+      - run: npm run gen:api
+        working-directory: app
+      - run: git diff --exit-code app/src/api/schema.d.ts
