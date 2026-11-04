@@ -1,0 +1,30 @@
+# DBeef project config for VEDAS. Everything VEDAS-specific lives here, never in engine/ or app/.
+# Run the engine on the machine that holds the data, as the user that owns the files
+# (WAL-mode SQLite needs to create a -shm file next to a database even when opened read-only):
+#   VEDAS_DATA=/data NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=… REDIS_URL=redis://localhost:6379/0 \
+#   python -m dbeef --config configs/vedas.yaml --port 8765 --allow-origin http://localhost:5173
+# then from your Mac: scripts/remote-engine.sh HOST
+project: vedas
+stores:
+  completed:   {type: sqlite, path: "${VEDAS_DATA}/runs/completed.db"}      # runs, run_facts, run_gates, hypothesis_stubs, rd_generations, copilot_*
+  roster:      {type: sqlite, path: "${VEDAS_DATA}/roster.db"}              # roster, roster_synonyms, catalog_*
+  sweep_state: {type: sqlite, path: "${VEDAS_DATA}/sweep/state.db"}         # run_state
+  council:     {type: sqlite, path: "${VEDAS_DATA}/runs/council.sqlite3"}   # council_* (real FKs)
+  pubchem:     {type: sqlite, path: "${VEDAS_DATA}/enrichment/pubchem.db"}  # cache, throttle
+  chembl:      {type: sqlite, path: "${VEDAS_DATA}/chembl/chembl_37.db", immutable: true}  # ~29 GB, nobody writes it
+  graph:       {type: neo4j, uri: "${NEO4J_URI}", user: "${NEO4J_USER}", password: "${NEO4J_PASSWORD}"}
+  jobs:        {type: redis, url: "${REDIS_URL}"}
+links:
+  - {from: {store: completed, collection: runs, field: inchikey}, to: {store: roster, collection: roster, field: inchikey}}
+  - {from: {store: completed, collection: runs, field: inchikey}, to: {store: graph, collection: Molecule, field: inchikey}}
+  - {from: {store: roster, collection: roster, field: inchikey}, to: {store: roster, collection: catalog_records, field: inchikey}}
+  - {from: {store: sweep_state, collection: run_state, field: inchikey}, to: {store: roster, collection: roster, field: inchikey}}
+  - {from: {store: roster, collection: roster, field: chembl_id}, to: {store: graph, collection: Molecule, field: chembl_id}}
+  - {from: {store: completed, collection: run_facts, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
+  - {from: {store: completed, collection: run_gates, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
+  - {from: {store: completed, collection: hypothesis_stubs, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
+  - {from: {store: jobs, collection: "rq:job:*", field: $key}, to: {store: completed, collection: runs, field: run_id}}   # holds for single-hypothesis jobs only
+  - {from: {store: council, collection: council_lab_proposals, field: job_id}, to: {store: jobs, collection: "rq:job:*", field: $key}}
+  - {from: {store: completed, collection: runs, field: hypothesis_id}, to: {store: graph, collection: Evidence, field: hypothesis_id}}
+  - {from: {store: completed, collection: runs, field: hypothesis_id}, to: {store: graph, collection: MR_Analysis, field: hypothesis_id}}
+  - {from: {store: graph, collection: Target, field: chembl_id}, to: {store: chembl, collection: target_dictionary, field: chembl_id}}

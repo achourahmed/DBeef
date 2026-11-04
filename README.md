@@ -51,6 +51,18 @@ cd app && npm install && npm run dev -- --port 5173 --strictPort
 
 Then open <http://localhost:5173>. The UI reads the engine URL and token from `?engine=` and `?token=`, then from `app/.env` (see `app/.env.example`), then defaults to `http://127.0.0.1:8765` and `dev`. After an API change, regenerate the types with `npm run gen:api` while the engine runs.
 
+## Use it on data that lives on another machine
+
+Run the engine where the data is, as the user that owns the files, and tunnel it here. SQLite databases in WAL mode need to create a `-shm` file next to them even when opened read-only, so a read-only user (or the Docker image, which runs as `nobody`) cannot open them.
+
+```bash
+scripts/remote-engine.sh my-server --config configs/vedas.yaml
+```
+
+The script starts the engine over SSH with a fresh token, forwards port 8765, and prints the local UI URL. For files nobody ever writes (reference databases of many gigabytes), set `immutable: true` on the store: SQLite then skips the WAL and lock files entirely.
+
+Real project configs live in `configs/`; [configs/vedas.yaml](configs/vedas.yaml) is the first one.
+
 ## Tests
 
 ```bash
@@ -76,3 +88,5 @@ One `dbeef.yaml` per project. The format is in spec §4.2, and [engine/examples/
 - Secrets are referenced as `${ENV_VAR}`.
 - Relative SQLite paths resolve against the config file's folder.
 - Cross-store links name both ends as `{store, collection, field}`. Use `field: $key` for the variable part of a Redis key.
+- Unknown keys are rejected at load time, so a typo such as `pasword:` cannot pass silently.
+- `~` is expanded in SQLite paths.
