@@ -1,6 +1,8 @@
-import { Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { QueryResult } from '@/api/client'
+
+export type Sort = { column: string; desc: boolean }
 
 function Cell({ value, onTrace }: { value: unknown; onTrace?: (value: string) => void }) {
   if (value === null || value === undefined) return <span className="text-muted-foreground italic">null</span>
@@ -24,18 +26,38 @@ function Cell({ value, onTrace }: { value: unknown; onTrace?: (value: string) =>
   )
 }
 
-export function ResultTable({ result, onTrace }: { result: QueryResult; onTrace?: (value: string) => void }) {
+export function ResultTable({ result, onTrace, sort, onSort, footer = true }: {
+  result: QueryResult
+  onTrace?: (value: string) => void
+  sort?: Sort | null
+  onSort?: (column: string) => void
+  footer?: boolean
+}) {
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-auto rounded-md border">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-card sticky top-0 z-10">
             <TableRow>
-              {result.columns.map((c, i) => (
-                <TableHead key={i} className="font-mono text-xs">
-                  {c}
-                </TableHead>
-              ))}
+              {result.columns.map((c, i) => {
+                const active = sort?.column === c
+                const Icon = active ? (sort!.desc ? ArrowDown : ArrowUp) : ArrowUpDown
+                return (
+                  <TableHead key={i} className="font-mono text-xs">
+                    {onSort ? (
+                      <button
+                        aria-label={`sort by ${c}`}
+                        aria-sort={active ? (sort!.desc ? 'descending' : 'ascending') : 'none'}
+                        className="group/head flex items-center gap-1 hover:underline"
+                        onClick={() => onSort(c)}
+                      >
+                        {c}
+                        <Icon className={active ? 'size-3' : 'size-3 opacity-0 group-hover/head:opacity-60'} />
+                      </button>
+                    ) : c}
+                  </TableHead>
+                )
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -51,10 +73,12 @@ export function ResultTable({ result, onTrace }: { result: QueryResult; onTrace?
           </TableBody>
         </Table>
       </div>
-      <p className="text-muted-foreground text-xs">
-        {result.rows.length} row{result.rows.length === 1 ? '' : 's'}
-        {result.truncated && ' (more available: raise the limit)'}
-      </p>
+      {footer && (
+        <p className="text-muted-foreground text-xs">
+          {result.rows.length} row{result.rows.length === 1 ? '' : 's'}
+          {result.truncated && ' (more available: raise the limit)'}
+        </p>
+      )}
     </div>
   )
 }

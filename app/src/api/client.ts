@@ -53,11 +53,18 @@ export const api = {
   stores: (p: string) => call<StoreStatus[]>(`/api/projects/${enc(p)}/stores`),
   collections: (p: string, s: string) => call<Collection[]>(`${store(p, s)}/collections`),
   describe: (p: string, s: string, c: string) => call<Description>(`${store(p, s)}/collections/${encPath(c)}`),
-  rows: (p: string, s: string, c: string, opts: { limit: number; offset?: number; eq?: [string, string] | null }) => {
+  rows: (p: string, s: string, c: string, opts: {
+    limit: number; offset?: number; eq?: [string, string] | null; q?: string | null; orderBy?: string | null; desc?: boolean
+  }) => {
     const qs = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset ?? 0) })
     if (opts.eq) {
       qs.set('eq_field', opts.eq[0])
       qs.set('eq_value', opts.eq[1])
+    }
+    if (opts.q) qs.set('q', opts.q)
+    if (opts.orderBy) {
+      qs.set('order_by', opts.orderBy)
+      qs.set('desc', String(!!opts.desc))
     }
     return call<QueryResult>(`${store(p, s)}/collections/${encPath(c)}/rows?${qs}`)
   },

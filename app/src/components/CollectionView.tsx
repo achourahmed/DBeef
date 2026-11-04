@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -6,8 +6,20 @@ import { Input } from '@/components/ui/input'
 import { api } from '@/api/client'
 import { useLoad } from '@/api/useLoad'
 import { ErrorNote } from './ErrorNote'
-import { ResultTable } from './ResultTable'
+import { Pager } from './Pager'
+import { ResultTable, type Sort } from './ResultTable'
 import type { Selection } from './Sidebar'
+
+const DEBOUNCE_MS = 300
+
+function useDebounced<T>(value: T): T {
+  const [slow, setSlow] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(value), DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [value])
+  return slow
+}
 
 export function CollectionView({ project, selection, onSelect, onTrace }: {
   project: string
@@ -15,11 +27,31 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
   onSelect: (s: Selection) => void
   onTrace?: (value: string) => void
 }) {
-  const [limit, setLimit] = useState(100)
   const { store, collection, eq = null } = selection ?? { store: '', collection: '' }
+  const [pageSize, setPageSize] = useState(100)
+  const [offset, setOffset] = useState(0)
+  const [sort, setSort] = useState<Sort | null>(null)
+  const [filter, setFilter] = useState('')
+  const q = useDebounced(filter.trim()) || null
+  const key = `${store}/${collection}`
+  const [seenKey, setSeenKey] = useState(key)
+  if (key !== seenKey) {  // a new collection starts from a clean page
+    setSeenKey(key)
+    setOffset(0)
+    setSort(null)
+    setFilter('')
+  }
+
   const desc = useLoad(selection ? () => api.describe(project, store, collection) : null, [project, store, collection])
-  const rows = useLoad(selection ? () => api.rows(project, store, collection, { limit, eq }) : null,
-    [project, store, collection, limit, eq?.[0], eq?.[1]])
+  const rows = useLoad(
+    selection ? () => api.rows(project, store, collection, { limit: pageSize, offset, eq, q, orderBy: sort?.column ?? null, desc: sort?.desc ?? false }) : null,
+    [project, store, collection, pageSize, offset, eq?.[0], eq?.[1], q, sort?.column, sort?.desc],
+  )
+
+  function toggleSort(column: string) {
+    setOffset(0)
+    setSort((s) => (s?.column === column ? (s.desc ? null : { column, desc: true }) : { column, desc: false }))
+  }
 
   if (!selection) return <p className="text-muted-foreground p-6 text-sm">Pick a collection in the sidebar.</p>
   return (
@@ -33,7 +65,8 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
             {desc.data.fields.map((f) => (
-              <Badge key={f.name} variant="secondary" className="font-mono">
+              <Badge key={f.name} variant="secondary" className="font-mono" title={f.pk ? 'primary key' : f.nullable === false ? 'not null' : undefined}>
+                {f.pk && <span className="text-[#F0444B]">⚷</span>}
                 {f.name}
                 {f.type && <span className="text-muted-foreground ml-1">{f.type}</span>}
               </Badge>
@@ -51,8 +84,14 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
           )}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">Rows</span>
+        <Input
+          className="h-8 w-56"
+          placeholder="filter rows (substring)"
+          value={filter}
+          onChange={(e) => { setFilter(e.target.value); setOffset(0) }}
+        />
         {eq && (
           <Badge variant="outline" className="gap-1 font-mono">
             {eq[0]} = {eq[1]}
@@ -62,20 +101,24 @@ export function CollectionView({ project, selection, onSelect, onTrace }: {
             </Button>
           </Badge>
         )}
-        <span className="text-muted-foreground ml-auto text-xs">limit</span>
-        <Input
-          type="number"
-          min={1}
-          max={10000}
-          className="h-8 w-24"
-          defaultValue={limit}
-          onBlur={(e) => setLimit(Math.max(1, Math.min(10000, Number(e.target.value) || 100)))}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        />
+        {sort && (
+          <Badge variant="outline" className="gap-1 font-mono">
+            {sort.column} {sort.desc ? '↓' : '↑'}
+            <Button variant="ghost" size="icon" className="size-4" aria-label="clear sort" onClick={() => setSort(null)}>
+              <X className="size-3" />
+            </Button>
+          </Badge>
+        )}
       </div>
       {rows.error && <ErrorNote error={rows.error} />}
       {rows.loading && !rows.data && <p className="text-muted-foreground text-sm">loading…</p>}
-      {rows.data && <ResultTable result={rows.data} onTrace={onTrace} />}
+      {rows.data && (
+        <>
+          <ResultTable result={rows.data} onTrace={onTrace} sort={sort} onSort={toggleSort} footer={false} />
+          <Pager result={rows.data} pageSize={pageSize} onOffset={setOffset}
+            onPageSize={(s) => { setPageSize(s); setOffset(0) }} />
+        </>
+      )}
     </div>
   )
 }

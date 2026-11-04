@@ -28,3 +28,15 @@ test('offers to trace a cell value when onTrace is given', async () => {
   await userEvent.click(buttons[0])
   expect(onTrace).toHaveBeenCalledWith('r1')
 })
+
+test('sortable headers report clicks and show the direction', async () => {
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const { vi } = await import('vitest')
+  const onSort = vi.fn()
+  const result = { columns: ['run_id', 'score'], rows: [['r1', 1]], truncated: false, offset: 0, total: null }
+  const { rerender } = render(<ResultTable result={result} onSort={onSort} sort={null} />)
+  await userEvent.click(screen.getByRole('button', { name: /sort by score/i }))
+  expect(onSort).toHaveBeenCalledWith('score')
+  rerender(<ResultTable result={result} onSort={onSort} sort={{ column: 'score', desc: true }} />)
+  expect(screen.getByRole('button', { name: /sort by score/i })).toHaveAttribute('aria-sort', 'descending')
+})
