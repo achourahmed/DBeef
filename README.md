@@ -49,7 +49,7 @@ cd engine && .venv/bin/python -m dbeef --config examples/dbeef.example.yaml --po
 cd app && npm install && npm run dev -- --port 5173 --strictPort
 ```
 
-Then open <http://localhost:5173>. In the UI: the schema map (click a cross-store link to check it against the data), a Data tab with sortable columns, a substring filter, paging and CSV/JSON/Markdown export, a read-only Query tab with per-store history and saved queries, and a Trace tab that finds one value in every store. `⌘K` jumps anywhere, `⌘F` traces, `/` filters the sidebar, `?` lists the shortcuts.
+Then open <http://localhost:5173>. In the UI: the schema map (click a cross-store link to check it against the data), a Data tab with sortable columns, a substring filter, paging and CSV/JSON/Markdown export, a read-only Query tab with per-store history and saved queries, and a Trace tab that finds one value in every store. `⌘K` jumps anywhere, `⌘F` traces, `/` filters the sidebar, `?` lists the shortcuts. The palette icon in the header switches between the Warm and Graphite themes, light or dark, and compact rows.
 
 The UI reads the engine URL and token from `?engine=` and `?token=`, then from `app/.env` (see `app/.env.example`), then defaults to `http://127.0.0.1:8765` and `dev`. After an API change, regenerate the types with `npm run gen:api` while the engine runs.
 
@@ -82,6 +82,8 @@ docker run --rm -d --name dbeef-redis-test -p 6379:6379 redis:7
 ```
 
 Override the defaults with `NEO4J_TEST_URI`, `NEO4J_TEST_PASSWORD` and `REDIS_TEST_URL`. The Redis tests use database 15 and only touch keys they create themselves.
+
+An end-to-end smoke test (Playwright) runs against a running stack on the sample data: `cd app && npx playwright install chromium && npm run e2e`.
 
 ## Project config
 
