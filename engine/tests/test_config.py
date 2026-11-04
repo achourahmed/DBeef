@@ -57,3 +57,37 @@ stores:
 """)
     with pytest.raises(ConfigError):
         load_config(p)
+
+
+# P0: real-data fixes
+
+def test_immutable_flag(tmp_path):
+    p = write(tmp_path, """
+project: demo
+stores:
+  chembl: {type: sqlite, path: chembl.db, immutable: true}
+  runs: {type: sqlite, path: runs.db}
+""")
+    cfg = load_config(p)
+    assert cfg.stores["chembl"].immutable is True
+    assert cfg.stores["runs"].immutable is False
+
+
+def test_sqlite_path_expands_user(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    p = write(tmp_path, """
+project: demo
+stores:
+  runs: {type: sqlite, path: "~/data/runs.db"}
+""")
+    assert load_config(p).stores["runs"].path == tmp_path / "data/runs.db"
+
+
+@pytest.mark.parametrize("text", [
+    "project: demo\nstores:\n  g: {type: neo4j, uri: bolt://x, pasword: oops}\n",
+    "project: demo\nstores:\n  r: {type: sqlite, path: r.db}\nlinks: []\norigin: {}\n",
+    "project: demo\nstores:\n  r: {type: sqlite, path: r.db}\nlinks:\n  - from: {store: r, collection: a, field: b, extra: 1}\n    to: {store: r, collection: a, field: b}\n",
+])
+def test_unknown_key_is_config_error(tmp_path, text):
+    with pytest.raises(ConfigError, match="[Ee]xtra"):
+        load_config(write(tmp_path, text))

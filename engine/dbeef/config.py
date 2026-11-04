@@ -16,24 +16,30 @@ class ConfigError(Exception):
     pass
 
 
-class StoreRef(BaseModel):
+class Strict(BaseModel):
+    # A typo such as `pasword:` fails at load time instead of silently defaulting.
+    model_config = ConfigDict(extra="forbid")
+
+
+class StoreRef(Strict):
     store: str
     collection: str
     field: str
 
 
-class LinkConfig(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class LinkConfig(Strict):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
     from_: StoreRef = Field(alias="from")
     to: StoreRef
 
 
-class SqliteStore(BaseModel):
+class SqliteStore(Strict):
     type: Literal["sqlite"]
     path: Path
+    immutable: bool = False  # only for files nobody writes: skips -wal/-shm entirely
 
 
-class Neo4jStore(BaseModel):
+class Neo4jStore(Strict):
     type: Literal["neo4j"]
     uri: str
     user: str = "neo4j"
@@ -41,7 +47,7 @@ class Neo4jStore(BaseModel):
     database: str | None = None
 
 
-class RedisStore(BaseModel):
+class RedisStore(Strict):
     type: Literal["redis"]
     url: str
 
@@ -49,7 +55,7 @@ class RedisStore(BaseModel):
 StoreConfig = Annotated[Union[SqliteStore, Neo4jStore, RedisStore], Field(discriminator="type")]
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(Strict):
     project: str = Field(pattern=r"^[a-z0-9_-]+$")
     stores: dict[Annotated[str, Field(pattern=_NAME)], StoreConfig] = Field(min_length=1)
     links: list[LinkConfig] = []
@@ -91,6 +97,8 @@ def load_config(path: Path) -> ProjectConfig:
     except ValidationError as e:
         raise ConfigError(f"{path}: {e}") from e
     for store in cfg.stores.values():
-        if isinstance(store, SqliteStore) and not store.path.is_absolute():
-            store.path = path.parent / store.path
+        if isinstance(store, SqliteStore):
+            store.path = store.path.expanduser()
+            if not store.path.is_absolute():
+                store.path = path.parent / store.path
     return cfg
