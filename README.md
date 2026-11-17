@@ -55,13 +55,25 @@ The UI reads the engine URL and token from `?engine=` and `?token=`, then from `
 
 ## Use it on data that lives on another machine
 
-Run the engine where the data is, as the user that owns the files, and tunnel it here. SQLite databases in WAL mode need to create a `-shm` file next to them even when opened read-only, so a read-only user (or the Docker image, which runs as `nobody`) cannot open them.
+Run the engine where the data is and tunnel it here. Two scripts do this; both start the engine over SSH with a fresh token, forward port 8765, and print the local UI URL. Ctrl-C stops the engine and the tunnel.
+
+When the stores run in Docker on that machine, run the engine as a container beside them. The script copies `engine/` and the config over, builds the image there, and starts it with the docker-run arguments in the file next to the config (`configs/vedas.docker` for `configs/vedas.yaml`): the stores' network, their volumes mounted read-only, and an env file for passwords.
 
 ```bash
-scripts/remote-engine.sh my-server --config configs/vedas.yaml
+scripts/remote-docker.sh my-server configs/vedas.yaml
 ```
 
-The script starts the engine over SSH with a fresh token, forwards port 8765, and prints the local UI URL. For files nobody ever writes (reference databases of many gigabytes), set `immutable: true` on the store: SQLite then skips the WAL and lock files entirely.
+Otherwise run the engine from a DBeef checkout on that machine (`engine/.venv` installed), as the user that owns the files. The config path is relative to `engine/`:
+
+```bash
+scripts/remote-engine.sh my-server --config ../configs/vedas.yaml
+```
+
+SQLite store options for live files:
+
+- `timeout_s`: caps every query on the store. A reader blocks a rollback-journal commit for as long as its query runs, so set it below the busy timeout of the app writing the file.
+- `immutable: true`: only for files nobody writes (reference databases of many gigabytes). SQLite then skips the WAL and lock files entirely. Never use it on a WAL file: it ignores what is still in the WAL and reads stale data.
+- A WAL-mode file can be read from a read-only mount only while the writing app holds it open (its `-shm` file exists). When the file is closed, the store shows as unavailable.
 
 Real project configs live in `configs/`; [configs/vedas.yaml](configs/vedas.yaml) is the first one.
 

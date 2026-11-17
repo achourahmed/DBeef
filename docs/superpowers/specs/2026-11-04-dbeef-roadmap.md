@@ -12,7 +12,7 @@ Facts that shape the plan:
 
 How this plan is used: it is the roadmap plus a concrete task list per phase (contracts, files, tests, done criteria). When a phase starts, its section is the brief for a `superpowers:writing-plans` TDD plan plus a short spec addendum in `docs/superpowers/specs/`. A fresh reviewer read this plan once; its findings are folded in below (notably: SQLite WAL on a read-only image, Postgres read-only must be a database role, no SSE, one row-fetching method instead of two, UI tests before UI features).
 
-Phase order (my call; the owner can reorder): **P0 real data → P1 item trace → P2 usability → P3 design → P4 map at scale → P5 desktop app → P6 DAG viewer → P7 algorithms → P8 Postgres + DuckDB → P9 live refresh → P10 hardening.** Desktop sits after the UI is representative and before the engine-heavy phases; those later contract changes mean a sidecar rebuild, which the dev-mode switch (P5) makes cheap.
+Phase order (set with the owner on 2026-11-17, after P0–P3): **P9 live refresh → P6 DAG viewer → P7 database algorithms (profile, duplicates, freshness, orphans) → DuckDB file adapter (Parquet/JSON files: the VEDAS graph-console audit log, FAERS, OpenGWAS catalog) → P7 graph algorithms → P4 map at scale → P8 Postgres + DuckDB database files → P5 desktop app → P10 hardening.** The owner asked for all four goals (why a run failed, what is broken, what is happening now, graph exploration); trace and link check already cover single runs, so live refresh comes first and the desktop app moves after the engine phases.
 
 Sizes: S = one session, M = two or three, L = four or more.
 
@@ -235,7 +235,7 @@ Done when: with the tunnel and a sweep running, queue depth and `completed.runs`
 
 ## Open calls left to the owner (defaults in parentheses)
 
-- Phase order: desktop (P5) before the engine-heavy phases (default) or last.
+- ~~Phase order~~: settled 2026-11-17, see Context.
 - P2 filtering: substring `q` + one `eq` (default) versus a structured `where` builder now.
 - P7: run node2vec/UMAP under a 3.12 venv if 3.14 wheels are missing (default) or drop them until wheels exist.
 - P8: Postgres and DuckDB together (default) or Postgres first.
@@ -306,3 +306,16 @@ dag:                           # P6: the graph holds no stage order, so stages a
 ```
 
 Identity keys for `rows(eq=…)` (P1): `Molecule.inchikey`, `Target.gene_symbol` (plus `chembl_id`), `Disease.efo_id`, `Phenotype.phenotype_name`; `Evidence` and `MR_Analysis` are composite (`hypothesis_id` + `assertion_id`), and `SUPPORTED_BY` relationships carry `hypothesis_id`/`assertion_id` too, so a `hypothesis_id` trace should include that rel type as an endpoint.
+
+## VEDAS live box (read-only checks on `vedas-phase0`, 2026-11-17)
+
+These supersede the code recon above wherever they differ.
+
+- Host: AWS EC2, x86_64, 4 CPUs, 15.8 GB RAM (13.5 GB available), disk 86 % used (14 GB free). User `ubuntu` is in the `docker` group. The stack is `~/vedas-phase0-build` (compose project `vedas-phase0-build`, network `vedas-phase0-build_default`), with Neo4j 2026.05.0 and Redis 7. VEDAS containers run as root.
+- `/data/roster.db` in every container is the bind-mounted COCONUT catalog `data/catalog-coconut-20260907.db` (5.0 GB, rollback journal, read-only everywhere), so DBeef opens it `immutable`. The old `data/roster.db` (2.7 MB) is kept for rollback and nobody mounts it.
+- Named volume `runs_data` holds `completed.db` (5.9 MB, rollback journal, root 644), `council.sqlite3` (80 KB, WAL) and `vault/vault.db` (70 KB, rollback journal) plus `vault/files/`. `sweep_data` holds `state.db` (12 KB, rollback journal). There is no `source_cache.db`.
+- `council.sqlite3` is usually closed: its `-shm` file came and went during the scan. A closed WAL file cannot be opened from a read-only mount (tested in Docker), so DBeef leaves it out.
+- There is no `/data/enrichment` mount: PubChem cache and `chembl-exact.db` exist only in staging (`~/vedas-staging/coconut-evidence-20260907/`), covered by `configs/vedas-staging.yaml`. There, `operations.sqlite` and `ledger.sqlite` are root 600, so the staging engine runs as root.
+- ChEMBL: `data/chembl/chembl_37.db`, 30.5 GB, owned by `ubuntu`. FAERS is `data/faers/` (Parquet), plus `opengwas_catalog.json` (6.9 MB) and `opengwas_embeddings.npz` (384 MB), all mounted only into the worker.
+- Redis (2 MB, 25 keys): `rq:job:*`, `rq:results:*`, `rq:workers:vedas`, `rq:worker:*`, `rq:queues`, `rq:failed:vedas`. `rq:queue:vedas` is absent while the queue is empty.
+- DBeef on the box: `scripts/remote-docker.sh vedas-phase0 configs/vedas.yaml` (arguments in `configs/vedas.docker`); `~/dbeef/vedas.env` holds only `NEO4J_USER` and `NEO4J_PASSWORD`.
