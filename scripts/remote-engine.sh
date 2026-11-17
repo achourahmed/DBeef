@@ -8,9 +8,9 @@ set -euo pipefail
 host=${1:?usage: remote-engine.sh HOST [--config PATH ...]}; shift
 dir=${DBEEF_REMOTE_DIR:-'~/DBeef'}
 port=${DBEEF_PORT:-8765}
-token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-configs=${*:---config configs/vedas.yaml}
-echo "UI:  http://localhost:5173/?engine=http://localhost:${port}&token=${token}"
+token=$(openssl rand -hex 16)  # tr </dev/urandom | head dies of SIGPIPE under pipefail
+configs=${*:---config ../configs/vedas.yaml}  # paths resolve from engine/
+echo "UI:  http://localhost:5173/?engine=http://127.0.0.1:${port}&token=${token}"
 echo "Ctrl-C stops the engine and the tunnel."
-exec ssh -L "${port}:127.0.0.1:${port}" -t "$host" \
+exec ssh -o ExitOnForwardFailure=yes -L "127.0.0.1:${port}:127.0.0.1:${port}" -t "$host" \
   "cd $dir/engine && exec .venv/bin/python -m dbeef $configs --port $port --dev-token $token --allow-origin http://localhost:5173"
