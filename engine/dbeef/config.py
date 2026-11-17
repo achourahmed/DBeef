@@ -37,6 +37,9 @@ class SqliteStore(Strict):
     type: Literal["sqlite"]
     path: Path
     immutable: bool = False  # only for files nobody writes: skips -wal/-shm entirely
+    # Caps every query (seconds). Set it below the busy timeout of any app writing the file,
+    # since a reader blocks a rollback-journal commit for as long as its query runs.
+    timeout_s: float | None = Field(default=None, gt=0)
 
 
 class Neo4jStore(Strict):

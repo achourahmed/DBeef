@@ -30,9 +30,10 @@ def _quote(name: str) -> str:
 
 
 class SqliteAdapter(Adapter):
-    def __init__(self, path: Path, immutable: bool = False):
+    def __init__(self, path: Path, immutable: bool = False, timeout_s: float | None = None):
         self.path = Path(path)
         self.immutable = immutable
+        self.timeout_s = timeout_s
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.Lock()
         self._deadline = 0.0
@@ -55,6 +56,8 @@ class SqliteAdapter(Adapter):
     def _run(self, sql: str, params: tuple = (), limit: int | None = None,
              deadline_s: float = QUERY_TIMEOUT_S) -> QueryResult:
         limit = clamp_limit(limit)
+        if self.timeout_s is not None:
+            deadline_s = min(deadline_s, self.timeout_s)
         with self._lock:
             conn = self._connect()
             self._deadline = time.monotonic() + deadline_s
@@ -66,7 +69,7 @@ class SqliteAdapter(Adapter):
                 if any(s in msg for s in ("not authorized", "authorization denied", "readonly")):
                     raise WriteBlocked(f"read-only store: {msg}") from e
                 if "interrupted" in msg:
-                    raise QueryTimeout(f"query exceeded {QUERY_TIMEOUT_S}s") from e
+                    raise QueryTimeout(f"query exceeded {deadline_s}s") from e
                 raise BadQuery(msg) from e
         columns = [d[0] for d in cur.description or []]
         return QueryResult(columns=columns, rows=[[to_json_safe(v) for v in r] for r in rows[:limit]],

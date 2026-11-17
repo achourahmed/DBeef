@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import time
 
 import pytest
 
@@ -171,3 +172,38 @@ def test_describe_marks_primary_key(sample_db):
     f = {x.name: x for x in SqliteAdapter(sample_db).describe("runs").fields}
     assert f["run_id"].pk is True and f["inchikey"].pk is False
     assert f["run_id"].nullable is False and f["inchikey"].nullable is True
+
+
+_SLOW = ("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) "
+         "SELECT COUNT(*) FROM c, runs")
+
+
+def test_timeout_s_caps_every_query_so_writers_get_through(sample_db):
+    import threading
+    from dbeef.adapters.base import QueryTimeout
+    a = SqliteAdapter(sample_db, timeout_s=0.5)
+    errors = []
+    reader = threading.Thread(target=lambda: errors.append(pytest.raises(QueryTimeout, a.query, _SLOW)))
+    reader.start()
+    time.sleep(0.2)  # the reader now holds a shared lock on the file
+    w = sqlite3.connect(sample_db, timeout=2)  # a writer that gives up after 2 s, like a busy app
+    w.execute("INSERT INTO runs(run_id) VALUES ('w1')")
+    w.commit()  # raises "database is locked" if the reader outlives 2 s
+    w.close()
+    reader.join()
+    assert "0.5" in str(errors[0].value)
+
+
+def test_truncated_read_releases_the_file(sample_db):
+    a = SqliteAdapter(sample_db)
+    assert a.rows("runs", limit=1).truncated is True  # leaves unread rows behind
+    w = sqlite3.connect(sample_db, timeout=0)
+    w.execute("INSERT INTO runs(run_id) VALUES ('w2')")
+    w.commit()
+    w.close()
+
+
+def test_make_adapter_passes_timeout_s(sample_db):
+    from dbeef.adapters import make_adapter
+    from dbeef.config import SqliteStore
+    assert make_adapter(SqliteStore(type="sqlite", path=sample_db, timeout_s=2)).timeout_s == 2
