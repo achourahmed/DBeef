@@ -207,3 +207,23 @@ def test_make_adapter_passes_timeout_s(sample_db):
     from dbeef.adapters import make_adapter
     from dbeef.config import SqliteStore
     assert make_adapter(SqliteStore(type="sqlite", path=sample_db, timeout_s=2)).timeout_s == 2
+
+
+def test_unopenable_file_is_unavailable_not_green(tmp_path):
+    # A cleanly closed WAL database in a read-only folder: SQLite can't create the -shm file.
+    d = tmp_path / "ro"
+    d.mkdir()
+    c = sqlite3.connect(d / "w.db")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("CREATE TABLE t(x)")
+    c.commit()
+    c.close()
+    d.chmod(0o555)
+    try:
+        a = SqliteAdapter(d / "w.db")
+        with pytest.raises(StoreUnavailable):
+            a.ping()
+        with pytest.raises(StoreUnavailable):
+            a.list_collections()
+    finally:
+        d.chmod(0o755)

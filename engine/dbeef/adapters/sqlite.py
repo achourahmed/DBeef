@@ -66,6 +66,11 @@ class SqliteAdapter(Adapter):
                 rows = cur.fetchmany(limit + 1)
             except sqlite3.Error as e:
                 msg = str(e)
+                code = getattr(e, "sqlite_errorcode", 0)
+                # CANTOPEN, or a READONLY_* subcode (e.g. no -shm file can be created): the file
+                # itself can't be read. Plain READONLY (8) is a refused write and stays below.
+                if code & 0xFF == sqlite3.SQLITE_CANTOPEN or (code & 0xFF == sqlite3.SQLITE_READONLY and code != sqlite3.SQLITE_READONLY):
+                    raise StoreUnavailable(f"cannot read {self.path}: {msg}") from e
                 if any(s in msg for s in ("not authorized", "authorization denied", "readonly")):
                     raise WriteBlocked(f"read-only store: {msg}") from e
                 if "interrupted" in msg:
@@ -76,7 +81,7 @@ class SqliteAdapter(Adapter):
                            truncated=len(rows) > limit)
 
     def ping(self) -> None:
-        self._run("SELECT 1")
+        self._run("SELECT 1 FROM sqlite_master LIMIT 1")  # reads the file; SELECT 1 alone never opens it
 
     def _objects(self) -> list[list]:
         return self._run("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') "
