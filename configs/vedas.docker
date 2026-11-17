@@ -7,5 +7,7 @@
 -e REDIS_URL=redis://redis:6379/0
 -v vedas-phase0-build_runs_data:/data/runs:ro
 -v vedas-phase0-build_sweep_data:/data/sweep:ro
+# shortcut: the dated catalog file VEDAS mounts today; after a new catalog release, copy the new source
+# path from `docker inspect` of the api container, or roster stays green but stale.
 -v $HOME/vedas-phase0-build/data/catalog-coconut-20260907.db:/data/roster.db:ro
 -v $HOME/vedas-phase0-build/data/chembl/chembl_37.db:/data/chembl/chembl_37.db:ro

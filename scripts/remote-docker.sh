@@ -11,6 +11,7 @@ port=${DBEEF_PORT:-8765}; remote=${DBEEF_REMOTE_DIR:-dbeef}
 root=$(cd "$(dirname "$0")/.." && pwd)
 docker_args=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$args_file" | tr '\n' ' ')
 token=$(openssl rand -hex 16)  # tr </dev/urandom | head dies of SIGPIPE under pipefail
+ssh "$host" mkdir -p "$remote"  # rsync creates only the last folder of a path
 rsync -a --delete --exclude .venv --exclude tests --exclude __pycache__ --exclude .pytest_cache \
   "$root/engine/" "$host:$remote/engine/"
 rsync -a "$config" "$host:$remote/config.yaml"
