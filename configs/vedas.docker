@@ -1,0 +1,11 @@
+# docker-run arguments for configs/vedas.yaml on the VEDAS box, read by scripts/remote-docker.sh.
+# One argument per line; $HOME expands on the box. ~/dbeef/vedas.env holds only NEO4J_USER and NEO4J_PASSWORD.
+--network vedas-phase0-build_default
+--env-file $HOME/dbeef/vedas.env
+-e VEDAS_DATA=/data
+-e NEO4J_URI=bolt://neo4j:7687
+-e REDIS_URL=redis://redis:6379/0
+-v vedas-phase0-build_runs_data:/data/runs:ro
+-v vedas-phase0-build_sweep_data:/data/sweep:ro
+-v $HOME/vedas-phase0-build/data/catalog-coconut-20260907.db:/data/roster.db:ro
+-v $HOME/vedas-phase0-build/data/chembl/chembl_37.db:/data/chembl/chembl_37.db:ro

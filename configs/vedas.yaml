@@ -1,16 +1,17 @@
 # DBeef project config for VEDAS. Everything VEDAS-specific lives here, never in engine/ or app/.
-# Run the engine on the machine that holds the data, as the user that owns the files
-# (WAL-mode SQLite needs to create a -shm file next to a database even when opened read-only):
-#   VEDAS_DATA=/data NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=… REDIS_URL=redis://localhost:6379/0 \
-#   python -m dbeef --config configs/vedas.yaml --port 8765 --allow-origin http://localhost:5173
-# then from your Mac: scripts/remote-engine.sh HOST
+# On the VEDAS box the engine runs in Docker next to the VEDAS containers, with their volumes mounted
+# read-only; configs/vedas.docker holds the docker-run arguments. From your Mac:
+#   scripts/remote-docker.sh vedas-phase0 configs/vedas.yaml
 project: vedas
 stores:
-  completed:   {type: sqlite, path: "${VEDAS_DATA}/runs/completed.db"}      # runs, run_facts, run_gates, hypothesis_stubs, rd_generations, copilot_*
-  roster:      {type: sqlite, path: "${VEDAS_DATA}/roster.db"}              # roster, roster_synonyms, catalog_*
-  sweep_state: {type: sqlite, path: "${VEDAS_DATA}/sweep/state.db"}         # run_state
-  council:     {type: sqlite, path: "${VEDAS_DATA}/runs/council.sqlite3"}   # council_* (real FKs)
-  pubchem:     {type: sqlite, path: "${VEDAS_DATA}/enrichment/pubchem.db"}  # cache, throttle
+  # VEDAS writes these three while DBeef reads them (rollback journal, 5 s busy timeout): cap DBeef's queries at 2 s.
+  completed:   {type: sqlite, path: "${VEDAS_DATA}/runs/completed.db", timeout_s: 2}   # runs, run_facts, run_gates, hypothesis_stubs, rd_generations, copilot_*
+  sweep_state: {type: sqlite, path: "${VEDAS_DATA}/sweep/state.db", timeout_s: 2}      # run_state
+  vault:       {type: sqlite, path: "${VEDAS_DATA}/runs/vault/vault.db", timeout_s: 2}
+  # Production mounts the COCONUT catalog file at /data/roster.db, read-only for every VEDAS container.
+  roster:      {type: sqlite, path: "${VEDAS_DATA}/roster.db", immutable: true}       # roster, roster_synonyms, catalog_* (~5 GB)
+  # Not listed: runs/council.sqlite3 is WAL and usually closed, and a closed WAL file can't be opened
+  # from a read-only mount. enrichment/pubchem.db has no mount in production.
   chembl:      {type: sqlite, path: "${VEDAS_DATA}/chembl/chembl_37.db", immutable: true}  # ~29 GB, nobody writes it
   graph:       {type: neo4j, uri: "${NEO4J_URI}", user: "${NEO4J_USER}", password: "${NEO4J_PASSWORD}"}
   jobs:        {type: redis, url: "${REDIS_URL}"}
@@ -23,8 +24,16 @@ links:
   - {from: {store: completed, collection: run_facts, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
   - {from: {store: completed, collection: run_gates, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
   - {from: {store: completed, collection: hypothesis_stubs, field: run_id}, to: {store: completed, collection: runs, field: run_id}}
+  - {from: {store: completed, collection: run_facts, field: inchikey}, to: {store: roster, collection: roster, field: inchikey}}
+  - {from: {store: completed, collection: run_gates, field: inchikey}, to: {store: roster, collection: roster, field: inchikey}}
+  - {from: {store: completed, collection: hypothesis_stubs, field: inchikey}, to: {store: roster, collection: roster, field: inchikey}}
   - {from: {store: jobs, collection: "rq:job:*", field: $key}, to: {store: completed, collection: runs, field: run_id}}   # holds for single-hypothesis jobs only
-  - {from: {store: council, collection: council_lab_proposals, field: job_id}, to: {store: jobs, collection: "rq:job:*", field: $key}}
   - {from: {store: completed, collection: runs, field: hypothesis_id}, to: {store: graph, collection: Evidence, field: hypothesis_id}}
   - {from: {store: completed, collection: runs, field: hypothesis_id}, to: {store: graph, collection: MR_Analysis, field: hypothesis_id}}
   - {from: {store: graph, collection: Target, field: chembl_id}, to: {store: chembl, collection: target_dictionary, field: chembl_id}}
+  - {from: {store: roster, collection: roster, field: inchikey}, to: {store: chembl, collection: compound_structures, field: standard_inchi_key}}   # indexed
+origins:
+  inchikey:      {store: roster, collection: roster, field: inchikey}
+  run_id:        {store: completed, collection: runs, field: run_id}
+  hypothesis_id: {store: completed, collection: runs, field: hypothesis_id}
+  chembl_id:     {store: chembl, collection: molecule_dictionary, field: chembl_id}
